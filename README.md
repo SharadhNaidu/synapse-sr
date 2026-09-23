@@ -249,5 +249,3 @@ Full list: [Limitations](https://sharadhnaidu.github.io/synapse-sr/limitations/)
 ## Acknowledgements
 - The optional fused kernel comes from [mamba-ssm](https://github.com/state-spaces/mamba) (Apache-2.0).
 - Sentinel-2 data: Copernicus programme, European Space Agency.
-
-See [THIRD_PARTY_NOTICES](https://github.com/SharadhNaidu/synapse-sr/blob/main/src/synapse_sr/THIRD_PARTY_NOTICES).
