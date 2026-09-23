@@ -39,7 +39,7 @@ Terrain in the area of the 30 July 2024 Wayanad landslide, 11.475 N 76.135 E. Se
 
 ```bash
 pip install "synapse-sr[stac]" pillow
-python tools/make_gifs.py --weights synapse-pro-v1.safetensors --out gifs
+python tools/make_gifs.py --weights synapse-pro-v2.safetensors --out gifs
 ```
 
 ## Recipes

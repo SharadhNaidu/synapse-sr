@@ -19,7 +19,7 @@ For several scenes, or to choose the device and weights explicitly:
 ```python
 from synapse_sr import Pro
 
-model = Pro.from_pretrained(device="cuda")        # or weights="synapse-pro-v1.safetensors"
+model = Pro.from_pretrained(device="cuda")        # or weights="synapse-pro-v2.safetensors"
 for path in ["a.tif", "b.tif", "c.tif"]:
     model.super_resolve(path).save(path.replace(".tif", "_2m.tif"))
 ```
@@ -53,7 +53,7 @@ for a in ax: a.axis("off")
 
 ```bash
 synapse-sr scene.tif scene_2m.tif
-synapse-sr scene.tif scene_2m.tif --device cpu --weights synapse-pro-v1.safetensors
+synapse-sr scene.tif scene_2m.tif --device cpu --weights synapse-pro-v2.safetensors
 ```
 
 Next: [Inputs and preprocessing](guide/inputs.md).

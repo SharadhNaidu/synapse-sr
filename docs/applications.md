@@ -19,7 +19,7 @@ print("mean NDVI on trusted pixels:", float(ndvi[trusted].mean()))
 ```
 
 On the development split (128 GeoSR pairs with a 2 m NAIP-derived reference), the NDVI edge F1 (field
-boundaries) is 0.597 for SYNAPSE Pro v1. The comparison figures are SEN2SR 0.548, LDSR-S2 0.570 and bicubic
+boundaries) is 0.599 for SYNAPSE Pro v2 (Pro v1: 0.597). The comparison figures are SEN2SR 0.548, LDSR-S2 0.570 and bicubic
 0.477. An independent held-out evaluation is pending.
 
 ## Urban analysis
@@ -31,7 +31,7 @@ built = r.indices()["ndbi"]                       # built-up index (20 m SWIR co
 ```
 
 The urban benchmark covers 12 Indian cities (Google Open Buildings v3), with the same classifier for every product
-and leave-one-city-out evaluation. The table gives the fraction of individual buildings detected:
+and leave-one-city-out evaluation. The table gives the fraction of individual buildings detected (measured with Pro v1):
 
 | Building size | Sentinel-2 10 m | Bicubic | SEN2SR | LDSR-S2 | Satlas | SYNAPSE Pro v1 |
 |---|---|---|---|---|---|---|

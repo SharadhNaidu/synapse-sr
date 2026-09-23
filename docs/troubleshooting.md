@@ -8,7 +8,7 @@ synapse-sr --env
 
 | Message | Cause | Fix |
 |---|---|---|
-| `pretrained weights for 'pro-v1' are not published yet` | registry entry without a download URL | pass `weights="path/to/model.safetensors"` |
+| `pretrained weights for 'pro-v2' are not published yet` | registry entry without a download URL | pass `weights="path/to/model.safetensors"` |
 | `checksum mismatch for ...` | incomplete or modified download | delete the file named in the message and retry |
 | `cannot map N channels to Sentinel-2 bands` | unknown band layout | pass `band_names=[...]` or write band descriptions into the GeoTIFF |
 | `expected the Sentinel-2 10 m grid, got 20.0 m pixels` | input not on the 10 m grid | resample to 10 m first (`gdalwarp -tr 10 10 -r near`) |

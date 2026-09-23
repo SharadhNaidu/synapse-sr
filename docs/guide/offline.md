@@ -16,12 +16,12 @@ weights by `Pro.from_pretrained()`, and that is skipped when you pass a local fi
 
     ```bash
     pip install --no-index --find-links wheelhouse synapse-sr
-    synapse-sr scene.tif scene_2m.tif --weights /opt/models/synapse-pro-v1.safetensors
+    synapse-sr scene.tif scene_2m.tif --weights /opt/models/synapse-pro-v2.safetensors
     ```
 
 ```python
 from synapse_sr import Pro
-model = Pro.from_pretrained(weights="/opt/models/synapse-pro-v1.safetensors")
+model = Pro.from_pretrained(weights="/opt/models/synapse-pro-v2.safetensors")
 ```
 
 ## Cache

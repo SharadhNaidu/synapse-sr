@@ -18,6 +18,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- **Default model is now SYNAPSE Pro v2** (`pro-v2`, 5000 training steps): 6 m certified in the two-bar resolution
+  test (v1: none), best field / urban / water edge F1 on the development benchmark, calibrated uncertainty shipped.
+  Known limitation: low-contrast wide strips (about 24 m) can be split by a false gap. `pro-v1` remains available.
+- The CLI `--model` default follows the registry default.
 - The 20 m context stem is zero-initialised without a scalar gate; Pro v1 checkpoints load unchanged (gate folded).
 - The frequency mixer pads in float32.
 - `scipy` is now a dependency.

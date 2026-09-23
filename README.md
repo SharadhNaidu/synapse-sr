@@ -168,13 +168,13 @@ err = result.uncertainty()     # expected absolute error per pixel and band (ref
 half = result.interval(0.9)    # the HR reference lies within image +/- half with probability 0.9
 ```
 
-Pro v1 measured coverage on development patches not used for fitting: 82 / 91 / 96 % at the 80 / 90 / 95 % levels.
+Pro v2 measured coverage on development patches not used for fitting: 82 / 91 / 96 % at the 80 / 90 / 95 % levels.
 
 ## Command line
 
 ```bash
 synapse-sr scene.tif scene_2m.tif
-synapse-sr scene.tif scene_2m.tif --device cpu --weights synapse-pro-v1.safetensors --scl scene_SCL.tif
+synapse-sr scene.tif scene_2m.tif --device cpu --weights synapse-pro-v2.safetensors --scl scene_SCL.tif
 synapse-sr --env
 ```
 
@@ -184,7 +184,7 @@ Use `--no-confidence` to write the four reflectance bands only.
 ## Offline use
 
 ```python
-model = Pro.from_pretrained(weights="/opt/models/synapse-pro-v1.safetensors")
+model = Pro.from_pretrained(weights="/opt/models/synapse-pro-v2.safetensors")
 ```
 
 No network access is needed apart from an optional one-time weight download, which is verified by SHA-256. See

@@ -8,7 +8,7 @@ python -m synapse_sr INPUT OUTPUT [options]
 | Option | Default | Meaning |
 |---|---|---|
 | `--weights PATH` | | local `.safetensors` checkpoint; no network access |
-| `--model NAME` | `pro-v1` | registered model to download when `--weights` is not given |
+| `--model NAME` | `pro-v2` | registered model to download when `--weights` is not given |
 | `--device DEV` | `cuda` if available | `cuda`, `cpu`, `cuda:1`, ... |
 | `--scl PATH` | `auto` | scene classification raster; `auto` uses `<input>_scl.tif`, `none` disables |
 | `--offset DN` | tag or 0 | DN offset, e.g. `-1000` for processing baseline 04.00 or later |

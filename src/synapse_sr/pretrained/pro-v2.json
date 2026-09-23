@@ -1,0 +1,72 @@
+{
+ "name": "synapse-pro-v2",
+ "file": "synapse-pro-v2.safetensors",
+ "url": "https://huggingface.co/SharadhNaiduTrains/synapse-sr/resolve/main/Pro/synapse-pro-v2.safetensors",
+ "sha256": "4badc676fc0fc549ae964bccb41b8c3d8c115be0279f6e6047acbb2549580c9b",
+ "size_bytes": 58047072,
+ "target_m": 2.0,
+ "scale": 5,
+ "bands_out": [
+  "B04",
+  "B03",
+  "B02",
+  "B08"
+ ],
+ "bands_in": [
+  "B04",
+  "B03",
+  "B02",
+  "B08",
+  "B05",
+  "B06",
+  "B07",
+  "B8A",
+  "B11",
+  "B12"
+ ],
+ "training_steps": 5000,
+ "status": "research preview",
+ "calibration": {
+  "error_model": {
+   "features": [
+    "log_scale",
+    "log_prior_over_tau",
+    "edge",
+    "local_std",
+    "brightness",
+    "ndvi",
+    "band_nir"
+   ],
+   "weights": [
+    -6.542873,
+    -0.363944,
+    0.122621,
+    -1.242952,
+    14.410378,
+    2.382937,
+    0.474122,
+    0.751428
+   ],
+   "tau": [
+    0.0006799999973736703,
+    0.0008399999933317304,
+    0.000859999970998615,
+    0.0019199999514967203
+   ],
+   "quantiles": {
+    "0.80": 2.671170018914587,
+    "0.90": 3.660357119649982,
+    "0.95": 4.717657269879186
+   },
+   "test_coverage": {
+    "0.80": 0.8181425,
+    "0.90": 0.9101875,
+    "0.95": 0.9562475
+   },
+   "spearman": 0.5740686297305643,
+   "aurc_ratio": 0.5119604571224741
+  },
+  "reference": "GeoSR dev split (held-out), 2 m NAIP-derived target",
+  "method": "log|error| linear model fitted on 1/4 of the dev patches, split-conformal quantiles on another 1/4, scored on the remaining 1/2"
+ }
+}

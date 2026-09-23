@@ -3,6 +3,8 @@ import json
 import platform
 import sys
 
+from .pretrained.registry import DEFAULT
+
 
 def _env():
     import numpy
@@ -31,7 +33,7 @@ def main(argv=None):
     ap.add_argument("input", nargs="?", help="Sentinel-2 GeoTIFF (10, 12 or 13 bands, or named bands)")
     ap.add_argument("output", nargs="?", help="output GeoTIFF: B04 B03 B02 B08, ERRSCALE x4, SUPPORT")
     ap.add_argument("--weights", help="local .safetensors checkpoint (no network access needed)")
-    ap.add_argument("--model", default="pro-v1", help="registered model name (default: pro-v1)")
+    ap.add_argument("--model", default=DEFAULT, help=f"registered model name (default: {DEFAULT})")
     ap.add_argument("--device", help="cuda, cpu, cuda:1, ... (default: cuda when available)")
     ap.add_argument("--scl", default="auto", help="scene classification raster; 'auto' uses <input>_scl.tif, 'none' disables")
     ap.add_argument("--offset", type=float, help="DN offset, e.g. -1000 for baseline >= 04.00 (default: BOA_ADD_OFFSET tag or 0)")

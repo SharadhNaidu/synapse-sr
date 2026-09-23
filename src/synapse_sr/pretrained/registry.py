@@ -2,7 +2,7 @@ import json
 import pathlib
 
 MANIFEST_DIR = pathlib.Path(__file__).parent
-DEFAULT = "pro-v1"
+DEFAULT = "pro-v2"
 
 
 def manifest(name=DEFAULT):

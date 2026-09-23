@@ -1,6 +1,6 @@
 """Before / after GIFs for the documentation, produced with the synapse-sr package itself.
 
-    python tools/make_gifs.py --weights synapse-pro-v1.safetensors --out assets/gifs
+    python tools/make_gifs.py --weights synapse-pro-v2.safetensors --out assets/gifs
 
 Each scene is fetched from Earth Search (``synapse_sr.fetch_sentinel2``), super-resolved, and rendered as a wipe
 between the Sentinel-2 10 m input (nearest-neighbour, no smoothing) and the 2 m output, both with the same
