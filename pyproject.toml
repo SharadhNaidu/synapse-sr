@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "synapse-sr"
 version = "0.1.0"
 description = "SYNAPSE Pro: observation-consistent Sentinel-2 10 m to 2 m super-resolution"
+readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "Proprietary (see THIRD_PARTY_NOTICES for bundled third-party code)"}
 dependencies = ["torch>=1.13", "numpy", "safetensors", "rasterio", "affine"]
