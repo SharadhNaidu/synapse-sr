@@ -8,3 +8,5 @@ dist/
 *.tif
 .venv/
 site/
+.env
+.env.*

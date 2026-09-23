@@ -88,7 +88,7 @@ class Pro:
         self.meta = meta or {}
 
     def __repr__(self):
-        scan = backend(torch.zeros(1, device=self.device))
+        scan = "fused" if backend(torch.zeros(1, device=self.device)) == "fused" else "pytorch"
         return f"Pro(name={self.meta.get('name', 'local')!r}, device={str(self.device)!r}, scan={scan!r})"
 
     @classmethod
