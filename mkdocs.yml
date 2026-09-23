@@ -1,0 +1,91 @@
+site_name: synapse-sr
+site_description: Observation-consistent super-resolution of Sentinel-2 imagery to a 2 m grid
+site_url: https://sharadhnaidu.github.io/synapse-sr/
+repo_url: https://github.com/SharadhNaidu/synapse-sr
+repo_name: SharadhNaidu/synapse-sr
+edit_uri: edit/main/docs/
+copyright: synapse-sr is released under CC0-1.0
+
+theme:
+  name: material
+  logo: assets/logo-dark-bg.svg
+  favicon: assets/logo.png
+  font:
+    text: Inter
+    code: JetBrains Mono
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: black
+      accent: black
+      toggle: {icon: material/weather-night, name: Switch to dark mode}
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: white
+      toggle: {icon: material/weather-sunny, name: Switch to light mode}
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+    - toc.follow
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Installation: installation.md
+      - Quick start: quickstart.md
+  - User guide:
+      - Inputs and preprocessing: guide/inputs.md
+      - Outputs: guide/outputs.md
+      - Support, confidence and consistency: guide/support.md
+      - Large scenes and tiling: guide/tiling.md
+      - Offline and on-premises use: guide/offline.md
+      - Getting Sentinel-2 data: guide/data.md
+      - Command line: guide/cli.md
+  - Examples: examples.md
+  - How it works: method.md
+  - API reference: api.md
+  - Limitations: limitations.md
+  - Troubleshooting: troubleshooting.md
+  - Changelog: changelog.md
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: numpy
+            show_source: false
+            show_root_heading: true
+            show_signature_annotations: true
+            separate_signature: true
+            members_order: source
+            merge_init_into_class: true
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc: {permalink: true}
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight: {anchor_linenums: true}
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed: {alternate_style: true}
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/SharadhNaidu/synapse-sr
+    - icon: fontawesome/solid/cube
+      link: https://huggingface.co/SharadhNaiduTrains/synapse-sr

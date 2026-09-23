@@ -1,0 +1,29 @@
+{
+ "name": "synapse-pro-v1",
+ "file": "synapse-pro-v1.safetensors",
+ "url": "https://huggingface.co/SharadhNaiduTrains/synapse-sr/resolve/main/Pro/synapse-pro-v1.safetensors",
+ "sha256": "eb6b7e355e5e7812e682faa2f698168ec51b5d515f2eace41a1886fd9553844a",
+ "size_bytes": 58047140,
+ "target_m": 2.0,
+ "scale": 5,
+ "bands_out": [
+  "B04",
+  "B03",
+  "B02",
+  "B08"
+ ],
+ "bands_in": [
+  "B04",
+  "B03",
+  "B02",
+  "B08",
+  "B05",
+  "B06",
+  "B07",
+  "B8A",
+  "B11",
+  "B12"
+ ],
+ "training_steps": 1000,
+ "status": "research preview"
+}

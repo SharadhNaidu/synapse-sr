@@ -8,7 +8,7 @@ import torch.nn as nn
 
 REPO = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
-from synapse.models.pro import SynapseProX5, icnr_  # noqa: E402
+from synapse_sr.models.pro import SynapseProX5, icnr_  # noqa: E402
 
 torch.manual_seed(0)
 

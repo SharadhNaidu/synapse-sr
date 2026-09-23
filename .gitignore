@@ -7,3 +7,4 @@ dist/
 *.pt
 *.tif
 .venv/
+site/

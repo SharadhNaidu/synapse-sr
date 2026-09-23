@@ -1,0 +1,6 @@
+# Runtime dependencies (mirrors pyproject.toml). Install PyTorch for your CUDA version first if needed.
+torch>=1.13
+numpy>=1.21
+safetensors>=0.3
+rasterio>=1.3
+affine>=2.3
