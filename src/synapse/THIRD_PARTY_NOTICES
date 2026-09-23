@@ -1,0 +1,18 @@
+SYNAPSE (synapse-sr) bundles or derives from the following third-party work.
+
+1. MambaSR backbone - src/synapse/models/mamba.py
+   Source: ESAOpenSR / SEN2SR, sen2sr/models/opensr_baseline/mamba.py, commit 8e21bb669bcc6e8eb95
+   Licence: CC0-1.0. Modified: timm/einops/mamba_ssm imports removed; selective scan routed through
+   src/synapse/models/scan.py. The SEN2SR paper and code are the work of the ESA OpenSR authors.
+   SYNAPSE training may initialise this backbone from the public SEN2SR RGBN x4 weights; the released
+   SYNAPSE checkpoint is a separately trained model and does not require SEN2SR at run time.
+
+2. Selective-scan CUDA kernel (optional fast path)
+   mamba-ssm (state-spaces/mamba), Tri Dao and Albert Gu, Apache-2.0. Not bundled; imported when installed.
+
+3. Sentinel-2 point-spread functions shipped inside the checkpoint (operator.weight) are derived from
+   ESA Sentinel-2 MSI published MTF/PSF characterisation.
+
+SEN2SR is not claimed as SYNAPSE work. SYNAPSE's own contributions are the x5 head, gated 20 m spectral
+context, frequency mixer, observation-complement projector with the S2 forward operator, Tikhonov-Morozov
+baseline, support/confidence outputs, training objective and data pipeline.
