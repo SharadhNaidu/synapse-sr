@@ -168,7 +168,7 @@ err = result.uncertainty()     # expected absolute error per pixel and band (ref
 half = result.interval(0.9)    # the HR reference lies within image +/- half with probability 0.9
 ```
 
-Pro v1 measured coverage on held-out patches: 82 / 91 / 96 % at the 80 / 90 / 95 % levels.
+Pro v1 measured coverage on development patches not used for fitting: 82 / 91 / 96 % at the 80 / 90 / 95 % levels.
 
 ## Command line
 

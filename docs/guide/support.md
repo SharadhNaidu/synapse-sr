@@ -35,8 +35,8 @@ half = result.interval(0.9)       # reference within image +/- half with probabi
 
 `uncertainty()` comes from an error model shipped with the checkpoint. It regresses log |error| on the learned
 error scale, the prior's magnitude relative to sensor noise, local edge strength and variance, brightness, NDVI and
-band, against a held-out HR reference. `interval()` scales it with split-conformal quantiles. Measured on held-out
-patches not used for fitting, for Pro v1:
+band, against a 2 m HR reference (GeoSR development split). `interval()` scales it with split-conformal quantiles.
+Measured on development patches not used for fitting or calibration, for Pro v1:
 
 | Level | Measured coverage |
 |---|---|

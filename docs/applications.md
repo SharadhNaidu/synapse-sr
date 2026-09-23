@@ -18,8 +18,9 @@ trusted = r.support == 2                          # observation-determined pixel
 print("mean NDVI on trusted pixels:", float(ndvi[trusted].mean()))
 ```
 
-On held-out HR reference data, the NDVI edge F1 (field boundaries) is 0.597 for SYNAPSE Pro v1. The
-comparison figures are SEN2SR 0.548, LDSR-S2 0.570 and bicubic 0.477.
+On the development split (128 GeoSR pairs with a 2 m NAIP-derived reference), the NDVI edge F1 (field
+boundaries) is 0.597 for SYNAPSE Pro v1. The comparison figures are SEN2SR 0.548, LDSR-S2 0.570 and bicubic
+0.477. An independent held-out evaluation is pending.
 
 ## Urban analysis
 
@@ -66,8 +67,9 @@ measured evidence.
 
 In a known-truth benchmark (collapsed structures, debris strips, flood advance), every product was held at the same
 0.5 % false-alarm rate on unchanged ground. SYNAPSE had the best F1: 0.331, against 0.319 for SEN2SR and 0.303
-for native 10 m. The generative models vary more between two looks at the same unchanged scene, so they need a
-higher threshold and miss events. LDSR-S2 missed 25 % of debris events. Satlas ESRGAN detected no collapses and
+for native 10 m. That lead comes from precision, not stability: SYNAPSE varies slightly more than SEN2SR between
+two looks at unchanged ground. LDSR-S2 and Satlas ESRGAN vary much more, so they need a higher threshold and
+miss events. LDSR-S2 missed 25 % of debris events. Satlas ESRGAN detected no collapses and
 a quarter of the floods.
 
 ## Available indices
