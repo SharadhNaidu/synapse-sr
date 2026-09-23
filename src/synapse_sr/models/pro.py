@@ -52,8 +52,19 @@ class FrequencyMixer(nn.Module):
         nn.init.zeros_(self.out.weight); nn.init.zeros_(self.out.bias)
 
     def forward(self, f):
-        lo = F.avg_pool2d(F.pad(f, [self.k // 2] * 4, mode="replicate"), self.k, stride=1)
+        # float32: replicate padding has no bfloat16 kernel in some torch versions
+        lo = F.avg_pool2d(F.pad(f.float(), [self.k // 2] * 4, mode="replicate"), self.k, stride=1).to(f.dtype)
         return f + self.out(torch.cat([self.low(lo), self.high(f - lo)], 1))
+
+
+def fold_v1_gate(state_dict):
+    """Pro v1 checkpoints stored tanh(aux_gate) * aux_stem; folding the gate into the stem loads them exactly."""
+    sd = dict(state_dict)
+    if "aux_gate" in sd:
+        g = torch.tanh(sd.pop("aux_gate").float())
+        sd["aux_stem.weight"] = sd["aux_stem.weight"] * g
+        sd["aux_stem.bias"] = sd["aux_stem.bias"] * g
+    return sd
 
 
 class SynapseProX5(nn.Module):
@@ -66,8 +77,8 @@ class SynapseProX5(nn.Module):
         self.layers, self.norm, self.conv_after_body = bb.layers, bb.norm, bb.conv_after_body
         self.conv_before_upsample = bb.conv_before_upsample   # 96 -> 64 + LeakyReLU
         E = BACKBONE["embed_dim"]
-        self.aux_stem = nn.Conv2d(n_aux, E, 3, padding=1)
-        self.aux_gate = nn.Parameter(torch.zeros(1))       # tanh(0) = 0: auxiliary context off at init
+        self.aux_stem = nn.Conv2d(n_aux, E, 3, padding=1)     # zero-initialised: identity at init, full gradient
+        nn.init.zeros_(self.aux_stem.weight); nn.init.zeros_(self.aux_stem.bias)
         self.freq = FrequencyMixer(E)
         self.up = nn.Sequential(nn.Conv2d(feat, feat * scale * scale, 3, padding=1), nn.PixelShuffle(scale),
                                 nn.LeakyReLU(0.2, inplace=True))
@@ -94,7 +105,7 @@ class SynapseProX5(nn.Module):
 
     def features(self, y10):
         rgbn, aux = y10[:, :4], y10[:, 4:]
-        f = self.rgbn_stem(rgbn) + torch.tanh(self.aux_gate) * self.aux_stem(aux)
+        f = self.rgbn_stem(rgbn) + self.aux_stem(aux)
         size = (f.shape[2], f.shape[3])
         z = self.pos_drop(self.patch_embed(f))
         for layer in self.layers:

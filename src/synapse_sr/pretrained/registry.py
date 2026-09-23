@@ -15,3 +15,12 @@ def manifest(name=DEFAULT):
         raise RuntimeError(f"pretrained weights for {name!r} are not published yet; "
                            f"pass a local checkpoint: Pro.from_pretrained(weights='path/to/model.safetensors')")
     return m
+
+
+def match(sha256):
+    """The registered manifest whose checkpoint has this SHA-256, or None (local weights keep their calibration)."""
+    for q in MANIFEST_DIR.glob("*.json"):
+        m = json.loads(q.read_text())
+        if m.get("sha256") == sha256:
+            return m
+    return None

@@ -1,11 +1,12 @@
 """synapse-sr: observation-consistent Sentinel-2 super-resolution (10 m -> 2.0 m RGBN)."""
 
+from synapse_sr.apps import Change, boundaries, change
 from synapse_sr.data import fetch_sentinel2
 from synapse_sr.pro import Pro
 from synapse_sr.result import Result
 
-__version__ = "0.1.0"
-__all__ = ["Pro", "Result", "super_resolve", "fetch_sentinel2", "__version__"]
+__version__ = "0.2.0"
+__all__ = ["Pro", "Result", "super_resolve", "fetch_sentinel2", "change", "boundaries", "Change", "__version__"]
 
 _default = {}
 

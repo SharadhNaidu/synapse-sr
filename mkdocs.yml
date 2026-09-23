@@ -49,6 +49,7 @@ nav:
       - Offline and on-premises use: guide/offline.md
       - Getting Sentinel-2 data: guide/data.md
       - Command line: guide/cli.md
+  - Applications: applications.md
   - Examples: examples.md
   - How it works: method.md
   - API reference: api.md

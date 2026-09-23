@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-09-23
+
+### Added
+
+- Application layer: `Result.indices()` (NDVI, SAVI, EVI, GNDVI, NDWI; with 20 m context NDRE, NDBI, NBR, MNDWI),
+  `Result.band()`, 20 m context bands on the output grid (`context=True`, labelled not super-resolved),
+  `synapse_sr.change()` (support-aware change detection) and `synapse_sr.boundaries()` (field, water, urban).
+- Calibrated uncertainty: `Result.uncertainty()` and `Result.interval(level)` from a checkpoint-shipped error model
+  with split-conformal coverage (Pro v1: 82 / 91 / 96 % at 80 / 90 / 95 %).
+- Local checkpoints matching a registered model (by SHA-256) receive that model's calibration.
+- Documentation: Applications page; calibrated-uncertainty guide.
+
+### Changed
+
+- The 20 m context stem is zero-initialised without a scalar gate; Pro v1 checkpoints load unchanged (gate folded).
+- The frequency mixer pads in float32.
+- `scipy` is now a dependency.
+
 ## [0.1.0] - 2026-09-23
 
 ### Added

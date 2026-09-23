@@ -26,10 +26,28 @@ it.
 
 The thresholds are heuristic and are reported in `result.metadata["support_classes"]`.
 
-## Confidence
+## Calibrated uncertainty
 
-`result.confidence` is a learned per-pixel estimate of the absolute error scale in reflectance units. It is
-useful for ranking regions, not as a probability. It has not been calibrated.
+```python
+err = result.uncertainty()        # (4, 5H, 5W) expected absolute error, reflectance
+half = result.interval(0.9)       # reference within image +/- half with probability 0.9
+```
+
+`uncertainty()` comes from an error model shipped with the checkpoint. It regresses log |error| on the learned
+error scale, the prior's magnitude relative to sensor noise, local edge strength and variance, brightness, NDVI and
+band, against a held-out HR reference. `interval()` scales it with split-conformal quantiles. Measured on held-out
+patches not used for fitting, for Pro v1:
+
+| Level | Measured coverage |
+|---|---|
+| 80 % | 82 % |
+| 90 % | 91 % |
+| 95 % | 96 % |
+
+The error map also ranks error. Keeping the 50 % of pixels it marks as most reliable roughly halves the mean
+absolute error, and its rank correlation with the actual error is 0.58.
+
+`result.confidence` is the network's raw error-scale output. Use `uncertainty()` or `interval()` for decisions.
 
 ## Consistency
 

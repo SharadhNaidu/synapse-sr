@@ -12,7 +12,7 @@ from synapse_sr.io import geotiff
 from synapse_sr.io.sentinel2 import select_bands, to_reflectance
 from synapse_sr.models import baseline, projector
 from synapse_sr.models.forward import S2Forward
-from synapse_sr.models.pro import SynapseProX5
+from synapse_sr.models.pro import SynapseProX5, fold_v1_gate
 from synapse_sr.models.scan import backend
 from synapse_sr.pretrained import download, registry
 from synapse_sr.result import Result
@@ -108,8 +108,11 @@ class Pro:
             ``"cuda"``, ``"cpu"``, ``"cuda:1"`` ... Defaults to CUDA when available.
         """
         device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
-        meta = {"name": "local", "weights": str(weights)} if weights is not None else {}
-        if weights is None:
+        meta = {}
+        if weights is not None:
+            known = registry.match(download.sha256(weights))
+            meta = dict(known, weights=str(weights)) if known else {"name": "local", "weights": str(weights)}
+        else:
             m = registry.manifest(name)
             weights = download.fetch(m["url"], m["sha256"], m["file"])
             meta = dict(m)
@@ -118,7 +121,7 @@ class Pro:
             raise ValueError(f"{weights} is not a SYNAPSE Pro checkpoint (no operator.weight)")
         op = S2Forward(sd.pop("operator.weight"), target_m=10.0 / SCALE)
         model = SynapseProX5()
-        model.load_state_dict({k[len("model."):]: v for k, v in sd.items() if k.startswith("model.")})
+        model.load_state_dict(fold_v1_gate({k[len("model."):]: v for k, v in sd.items() if k.startswith("model.")}))
         return cls(model, op, device, meta)
 
     def save_pretrained(self, path: PathLike) -> PathLike:
@@ -138,7 +141,8 @@ class Pro:
     @torch.no_grad()
     def super_resolve(self, src: Union[PathLike, np.ndarray], band_names: Optional[Sequence[str]] = None,
                       scl: Optional[Union[PathLike, np.ndarray]] = "auto", nodata: Optional[float] = None,
-                      offset: Optional[float] = None, tile: Optional[int] = None, halo: int = 16) -> Result:
+                      offset: Optional[float] = None, tile: Optional[int] = None, halo: int = 16,
+                      context: bool = True) -> Result:
         """Super-resolve one Sentinel-2 scene.
 
         Parameters
@@ -161,6 +165,9 @@ class Pro:
             ``None`` (default) reads the GeoTIFF ``BOA_ADD_OFFSET`` tag, else 0. Ignored for reflectance input.
         tile, halo:
             Source-pixel tile size and context halo. Default tile: 64 on the fused CUDA path, 32 otherwise.
+        context:
+            Carry the six native 20 m bands (B05 B06 B07 B8A B11 B12) onto the output grid by pixel replication,
+            so red-edge and SWIR indices (NDRE, NDBI, NBR, MNDWI) are available. They are NOT super-resolved.
 
         Returns
         -------
@@ -258,6 +265,11 @@ class Pro:
                                     "0": "LOW: prior-dominated or invalid input", "thresholds_tau": SUPPORT_T},
                 "invalid_input_fraction": float(1 - valid.mean()), "scl": scl_used, "offset": offset,
                 "consistency_note": "RMS(A x - y) / tau under the nominal Sentinel-2 forward model"}
+        ctx = None
+        if context:
+            ctx = y10[0, 4:].repeat_interleave(SCALE, -2).repeat_interleave(SCALE, -1).cpu().numpy().astype(np.float16)
+            meta["context_note"] = "B05 B06 B07 B8A B11 B12 replicated from their native 20 m grid; not super-resolved"
         return Result(image=x[0].cpu().numpy(), confidence=conf[0].cpu().numpy(),
                       consistency=dict(zip(self.op.bands, rms.tolist())), gsd=gsd, metadata=meta, profile=profile,
-                      support=support, valid=v2, x_base=base[0].cpu().numpy(), prior=prior.cpu().numpy())
+                      support=support, valid=v2, x_base=base[0].cpu().numpy(), prior=prior.cpu().numpy(),
+                      context=ctx, calibration=self.meta.get("calibration"))

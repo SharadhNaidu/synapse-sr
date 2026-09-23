@@ -44,6 +44,8 @@ the observation and how much from the learned prior.
 - [Numpy, torch and xarray inputs](#numpy-torch-and-xarray-inputs)
 - [Large scenes](#large-scenes)
 - [Support, confidence and consistency](#support-confidence-and-consistency)
+- [Applications](#applications)
+- [Calibrated uncertainty](#calibrated-uncertainty)
 - [Command line](#command-line)
 - [Offline use](#offline-use)
 - [Examples](#examples)
@@ -140,11 +142,33 @@ result = model.super_resolve("large_scene.tif", tile=64, halo=16)
 result.x_base         # determined by the Sentinel-2 observation
 result.prior          # added by the learned prior, invisible to the sensor; x_base + prior == image
 result.support        # 2 HIGH (observation-determined), 1 MEDIUM, 0 LOW (prior-dominated) or invalid
-result.confidence     # learned per-pixel error scale (not calibrated)
+result.confidence     # learned per-pixel error scale (raw; use uncertainty() for decisions)
 result.valid          # False on NoData, cloud, cloud shadow, cirrus, saturation
 ```
 
 See [Support, confidence and consistency](https://sharadhnaidu.github.io/synapse-sr/guide/support/).
+
+## Applications
+
+```python
+idx = result.indices()                                   # ndvi savi evi gndvi ndwi (+ ndre ndbi nbr mndwi)
+fields = synapse_sr.boundaries(result, "field")          # also "water", "urban"
+flood = synapse_sr.change(before, after, "ndwi")         # also "ndvi", "nbr", "brightness"
+flood.mask, flood.area_km2, flood.unreliable_fraction
+```
+
+`change` flags only pixels that are valid and observation-supported on both dates. See
+[Applications](https://sharadhnaidu.github.io/synapse-sr/applications/) for crop monitoring, urban analysis,
+water mapping and disaster assessment, with benchmarks.
+
+## Calibrated uncertainty
+
+```python
+err = result.uncertainty()     # expected absolute error per pixel and band (reflectance)
+half = result.interval(0.9)    # the HR reference lies within image +/- half with probability 0.9
+```
+
+Pro v1 measured coverage on held-out patches: 82 / 91 / 96 % at the 80 / 90 / 95 % levels.
 
 ## Command line
 

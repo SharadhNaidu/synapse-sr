@@ -189,3 +189,47 @@ def test_one_call_function_and_cli(model, tmp_path, capsys):
         assert d.count == 4
     assert cli(["--version"]) == 0 and synapse_sr.__version__ in capsys.readouterr().out
     assert cli(["--env"]) == 0 and '"torch"' in capsys.readouterr().out
+
+
+# ------------------------------------------------------------------ applications
+def test_indices_context_bands_and_applications(model):
+    import synapse_sr
+    arr = scene(20, 20, seed=11)
+    r = model.super_resolve(arr, band_names=S2_12, tile=20)
+    idx = r.indices()
+    assert {"ndvi", "ndwi", "savi", "evi", "gndvi", "ndre", "ndbi", "nbr", "mndwi"} <= set(idx)
+    assert all(v.shape == (100, 100) for v in idx.values())
+    assert r.context.shape == (6, 100, 100) and np.allclose(r.band("B11")[0, :5], r.band("B11")[0, 0], atol=1e-3)
+    no_ctx = model.super_resolve(arr, band_names=S2_12, tile=20, context=False)
+    assert no_ctx.context is None and "nbr" not in no_ctx.indices()
+    for kind in ("field", "water", "urban"):
+        b = synapse_sr.boundaries(r, kind)
+        assert b.shape == (100, 100) and np.nanmin(b) >= 0 and np.nanmax(b) <= 1
+
+
+def test_change_is_zero_on_identical_input_and_detects_a_change(model):
+    import synapse_sr
+    arr = scene(24, 24, seed=12)
+    a = model.super_resolve(arr, band_names=S2_12, tile=24)
+    same = synapse_sr.change(a, a, "ndvi")
+    assert same.mask.sum() == 0 and same.area_km2 == 0.0
+    burnt = arr.copy(); burnt[7, 8:16, 8:16] = burnt[7, 8:16, 8:16] // 4          # NIR collapse over 80 m
+    b = model.super_resolve(burnt, band_names=S2_12, tile=24)
+    ch = synapse_sr.change(a, b, "ndvi")
+    assert ch.mask[45:75, 45:75].mean() > 0.3 and ch.mask[:20, :20].mean() < 0.05
+    with pytest.raises(KeyError):
+        synapse_sr.change(a, b, "not_an_index")
+
+
+def test_uncertainty_and_interval_require_and_use_calibration(model):
+    r = model.super_resolve(scene(16, 16), band_names=S2_12, tile=16)
+    with pytest.raises(RuntimeError, match="calibrat"):
+        r.interval(0.9)
+    r.calibration = {"error_model": {"weights": [-4.0, 0.3, 0.1, 2.0, 1.0, 0.5, 0.1, 0.2],
+                                     "tau": [0.00068, 0.00084, 0.00086, 0.00192],
+                                     "quantiles": {"0.80": 1.2, "0.90": 1.6, "0.95": 2.0}}}
+    u = r.uncertainty()
+    assert u.shape == r.image.shape and (u > 0).all() and np.isfinite(u).all()
+    assert np.allclose(r.interval(0.9), 1.6 * u)
+    with pytest.raises(KeyError):
+        r.interval(0.5)

@@ -8,6 +8,7 @@ import numpy as np
 from synapse_sr.io import geotiff
 
 BANDS = ("B04", "B03", "B02", "B08")
+CONTEXT_BANDS = ("B05", "B06", "B07", "B8A", "B11", "B12")
 
 
 @dataclass
@@ -37,6 +38,12 @@ class Result:
         ``(4, 5H, 5W)`` the observation-determined baseline.
     prior:
         ``(4, 5H, 5W)`` structure contributed by the learned prior; ``x_base + prior == image``.
+    context:
+        ``(6, 5H, 5W)`` float16 B05 B06 B07 B8A B11 B12 replicated from their native 20 m grid (not
+        super-resolved), or ``None``.
+    calibration:
+        The checkpoint's calibrated error model (coefficients, noise levels, conformal quantiles), used by
+        :meth:`uncertainty` and :meth:`interval`; ``None`` when the checkpoint ships without one.
     """
 
     image: np.ndarray
@@ -49,6 +56,8 @@ class Result:
     valid: Optional[np.ndarray] = None
     x_base: Optional[np.ndarray] = None
     prior: Optional[np.ndarray] = None
+    context: Optional[np.ndarray] = None
+    calibration: Optional[dict] = None
 
     @property
     def shape(self):
@@ -61,6 +70,66 @@ class Result:
         if self.valid is not None:
             v = np.where(self.valid, v, np.nan)
         return v
+
+    def band(self, name: str) -> np.ndarray:
+        """One band by name: B04 B03 B02 B08 (super-resolved) or a 20 m context band (replicated)."""
+        if name in BANDS:
+            return self.image[BANDS.index(name)]
+        if self.context is not None and name in CONTEXT_BANDS:
+            return self.context[CONTEXT_BANDS.index(name)].astype(np.float32)
+        raise KeyError(f"band {name!r} not available (context bands present: {self.context is not None})")
+
+    def indices(self) -> dict:
+        """Application indices on the output grid, NaN where the input was invalid.
+
+        From the super-resolved bands: NDVI, SAVI, EVI, GNDVI (vegetation / crops) and NDWI (water). With 20 m
+        context: NDRE (crop stress), NDBI (built-up), NBR (burn severity) and MNDWI (water / flood); these carry the
+        20 m spatial detail of their red-edge / SWIR band."""
+        r, g, b, n = (self.image[i].astype(np.float32) for i in range(4))
+        nd = lambda a, c: (a - c) / (a + c + 1e-6)
+        out = {"ndvi": nd(n, r), "ndwi": nd(g, n), "gndvi": nd(n, g),
+               "savi": 1.5 * (n - r) / (n + r + 0.5),
+               "evi": 2.5 * (n - r) / (n + 6 * r - 7.5 * b + 1.0)}
+        if self.context is not None:
+            re1, sw1, sw2 = self.band("B05"), self.band("B11"), self.band("B12")
+            out.update({"ndre": nd(n, re1), "ndbi": nd(sw1, n), "nbr": nd(n, sw2), "mndwi": nd(g, sw1)})
+        if self.valid is not None:
+            out = {k: np.where(self.valid, v, np.nan) for k, v in out.items()}
+        return out
+
+    def uncertainty(self) -> np.ndarray:
+        """Expected absolute error per pixel and band (reflectance), ``(4, 5H, 5W)``, from the checkpoint's calibrated
+        error model: log|error| regressed on the learned error scale, the prior's magnitude relative to sensor noise,
+        local edge strength and variance, brightness, NDVI and band, fitted against a held-out HR reference."""
+        em = (self.calibration or {}).get("error_model")
+        if not em:
+            raise RuntimeError("this checkpoint ships no calibrated error model; use `confidence` as a relative scale")
+        from scipy import ndimage
+        x = self.image.astype(np.float32)
+        br = x[:3].mean(0)
+        pad = np.pad(br, 1, mode="edge")
+        gx = ndimage.sobel(pad, 1)[1:-1, 1:-1]; gy = ndimage.sobel(pad, 0)[1:-1, 1:-1]
+        mu = ndimage.uniform_filter(br, 5, mode="nearest"); sd = np.sqrt(np.maximum(ndimage.uniform_filter(br * br, 5, mode="nearest") - mu * mu, 0))
+        ndvi = np.clip((x[3] - x[0]) / (x[3] + x[0] + 1e-6), -1, 1)   # physical range; guards near-zero denominators
+        tau = np.asarray(em["tau"], np.float32)[:, None, None]
+        feats = [np.log(self.confidence.astype(np.float32)), np.log(np.abs(self.prior) / tau + 1e-3),
+                 np.broadcast_to(np.hypot(gx, gy), x.shape), np.broadcast_to(sd, x.shape), np.broadcast_to(br, x.shape),
+                 np.broadcast_to(ndvi, x.shape), np.broadcast_to(np.arange(4)[:, None, None] == 3, x.shape).astype(np.float32)]
+        w = np.asarray(em["weights"], np.float32)
+        z = w[0] + sum(wi * f for wi, f in zip(w[1:], feats))
+        return np.exp(np.clip(z, np.log(1e-4), np.log(0.3)))       # bounded to physically possible errors
+
+    def interval(self, level: float = 0.9) -> np.ndarray:
+        """Calibrated error half-width (reflectance), ``(4, 5H, 5W)``: with probability ``level`` the reference value
+        lies within ``image +/- half-width``. Levels 0.80, 0.90 and 0.95 are calibrated by split conformal prediction on
+        held-out HR reference data; see the model card for the measured coverage."""
+        em = (self.calibration or {}).get("error_model")
+        if not em:
+            raise RuntimeError("this checkpoint ships no uncertainty calibration; use `confidence` as a relative scale")
+        q = em["quantiles"].get(f"{level:.2f}")
+        if q is None:
+            raise KeyError(f"calibrated levels: {sorted(em['quantiles'])}")
+        return q * self.uncertainty()
 
     def rgb(self, percentiles=(2, 98), gamma: float = 1.0) -> np.ndarray:
         """``(5H, 5W, 3)`` uint8 true-colour quicklook (B04 B03 B02), percentile-stretched jointly."""

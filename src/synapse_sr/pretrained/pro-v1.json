@@ -25,5 +25,48 @@
   "B12"
  ],
  "training_steps": 1000,
- "status": "research preview"
+ "status": "research preview",
+ "calibration": {
+  "error_model": {
+   "features": [
+    "log_scale",
+    "log_prior_over_tau",
+    "edge",
+    "local_std",
+    "brightness",
+    "ndvi",
+    "band_nir"
+   ],
+   "weights": [
+    -6.048459,
+    -0.395191,
+    0.097579,
+    -1.220141,
+    11.914432,
+    1.610247,
+    0.329528,
+    0.699594
+   ],
+   "tau": [
+    0.00068,
+    0.00084,
+    0.00086,
+    0.00192
+   ],
+   "quantiles": {
+    "0.80": 2.751042227432975,
+    "0.90": 3.807928244493185,
+    "0.95": 4.914480475577232
+   },
+   "test_coverage": {
+    "0.80": 0.8210025,
+    "0.90": 0.9129625,
+    "0.95": 0.95718
+   },
+   "spearman": 0.5751877470007896,
+   "aurc_ratio": 0.5144575171404198
+  },
+  "reference": "GeoSR dev split (held-out), 2 m NAIP-derived target",
+  "method": "log|error| linear model fitted on 1/4 of the dev patches, split-conformal quantiles on another 1/4, scored on the remaining 1/2"
+ }
 }
