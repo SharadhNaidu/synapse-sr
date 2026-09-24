@@ -19,7 +19,7 @@ synapse-sr --env
 | `GeoTIFF IO needs rasterio` | rasterio missing | `pip install rasterio` (conda-forge on Windows if pip fails) |
 | output much darker or brighter than expected | offset mismatch | check the product's processing baseline; pass `offset=-1000` or `offset=0` |
 | scenes from `fetch_sentinel2` in v0.2.0 look too dark, NDVI near 1 everywhere | v0.2.0 applied the baseline 04.00 offset to Earth Search data that already had it removed | upgrade to 0.3.0, re-download the scene (the `BOA_ADD_OFFSET` tag is now correct) |
-| `pretrained weights for 'flash-v1' are not published yet` | Flash is still training | use Pro, or a local Flash checkpoint via `weights=` |
+| `pretrained weights for 'flash-v1' are not published yet` | Flash weights are not released yet | use Pro, or a local Flash checkpoint via `weights=` |
 | CPU run far slower than expected inside Docker / Kubernetes | PyTorch starts one thread per host core, not per allowed core | `OMP_NUM_THREADS=<cores you have>` or `torch.set_num_threads(n)` |
 | first GPU scene slow on Colab / Kaggle, later ones fast | Triton compiles its kernel once per session | expected; nothing to do |
 | GPU memory full, or very slow on Windows laptops | too many tiles per batch for the GPU | `batch=2` (or `--batch 2`); on Windows, exhausted GPU memory spills into system RAM instead of failing |

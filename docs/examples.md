@@ -65,7 +65,7 @@ first (`rasterio` with `src.window_transform(win)`) and pass the path.
 ```python
 from synapse_sr import Flash, Pro
 
-model = Flash.from_pretrained(device="cpu")          # when Flash weights are published
+model = Flash.from_pretrained(device="cpu")          # once Flash weights are released
 # model = Pro.from_pretrained(device="cpu")          # works everywhere; slower
 r = model.super_resolve("scene.tif", batch=1)
 ```

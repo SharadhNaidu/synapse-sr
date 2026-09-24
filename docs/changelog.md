@@ -9,8 +9,8 @@ All notable changes to this project are documented here. The format follows
 ### Added
 
 - **SYNAPSE Flash** (`synapse_sr.Flash`, `--model flash`): a re-parameterised SPAN-style CNN on the same
-  observation-consistent pipeline, for CPUs, laptops, integrated graphics, Apple silicon and ARM. Weights are in
-  training; `Pro.from_pretrained(weights=...)` recognises Flash checkpoints automatically.
+  observation-consistent pipeline, for CPUs, laptops, integrated graphics, Apple silicon and ARM. Weights are not
+  released yet; `Pro.from_pretrained(weights=...)` recognises Flash checkpoints automatically.
 - **Triton selective-scan kernel**: Pro runs its Mamba layers at GPU speed on Colab, Kaggle and any CUDA machine
   with Triton, with no `mamba-ssm` build. It is self-tested against the exact scan once per process.
 - **Live feedback** (Rich): progress bar with stages and tile counts, download bar, one-line result summary;

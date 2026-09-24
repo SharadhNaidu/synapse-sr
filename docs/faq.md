@@ -28,7 +28,7 @@ red-edge and SWIR indices, but they are **not** super-resolved.
 
 ### Pro or Flash?
 
-Use Pro on a GPU (Colab, Kaggle, a workstation). Use Flash on CPU-only machines once its weights are published.
+Use Pro on a GPU (Colab, Kaggle, a workstation). Flash, the CPU-oriented model, is not released yet. Until it is, Pro runs on CPU too, only more slowly.
 The physics guarantees are identical. See [Choosing a model and a device](guide/models.md).
 
 ### How long does it take?

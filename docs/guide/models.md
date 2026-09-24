@@ -23,7 +23,7 @@ flash = Flash.from_pretrained(device="cpu")       # fastest on any machine
 loads local files does not need to know which kind of checkpoint it has.
 
 !!! note "Flash weights"
-    Flash is in training. `synapse-sr --models` lists what is published. Until Flash weights are released,
+    Flash weights are not released yet. `synapse-sr --models` lists what is published. Until Flash weights are released,
     `Flash.from_pretrained()` raises an error that explains how to load a local checkpoint.
 
 ## Devices

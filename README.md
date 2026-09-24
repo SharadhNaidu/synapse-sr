@@ -56,11 +56,12 @@ Worked examples for each: [Applications](https://sharadhnaidu.github.io/synapse-
 |---|---|---|
 | Network | 14.4 M-parameter state-space (Mamba) model | ~0.6 M-parameter convolutional model |
 | Best on | GPU: Colab, Kaggle, workstations | any CPU, laptops, integrated graphics, Apple silicon, ARM |
-| Load | `Pro.from_pretrained()` | `Flash.from_pretrained()` |
+| Load | `Pro.from_pretrained()` | `Flash.from_pretrained()` (weights not released yet) |
 | Physics guarantees | identical | identical |
 
-Both share the same observation-consistent pipeline, so the same guarantees hold for either one. Flash weights
-are in training; `synapse-sr --models` shows what is published.
+Both share the same observation-consistent pipeline, so the same guarantees hold for either one. **Flash weights
+are not released yet.** Until they are, use Pro, which also runs on CPU (more slowly). `synapse-sr --models` shows
+what is published.
 
 ## Why trust the output
 
