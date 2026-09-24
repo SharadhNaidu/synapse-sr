@@ -69,7 +69,7 @@ flood / landslide change detection.
 | Runtime | Model | Notes |
 |---|---|---|
 | Colab / Kaggle GPU | Pro | Triton scan kernel; the default of 8 tiles per batch fits a T4 (16 GB) |
-| Colab / Kaggle CPU | Flash | recommended; Pro works but is much slower on CPU |
+| Colab / Kaggle CPU | Pro | works but slow: the free CPU runtimes have 2 threads and a 1.28 km scene takes over 30 min. The notebook switches to a 480 m area automatically. Use a GPU runtime for real work. |
 
 If the GPU runs out of memory, lower `batch` (tiles per forward pass) or `tile`:
 

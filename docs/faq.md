@@ -39,6 +39,7 @@ Measured on a 1.28 km x 1.28 km scene (128 x 128 input pixels, 640 x 640 output)
 |---|---|
 | A100 slice, Triton kernel | 5.2 s (first call 22 s, including the one-time compile and weight download) |
 | Laptop RTX 4070, Windows, PyTorch scan | 80 s |
+| Kaggle free CPU runtime (2 threads) | more than 30 min: use a GPU runtime, or a smaller area |
 
 Time grows with area: a 10 km x 10 km scene has about 61x as many pixels.
 
