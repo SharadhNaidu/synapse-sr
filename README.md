@@ -11,6 +11,7 @@
   <a href="https://pypi.org/project/synapse-sr/"><img src="https://img.shields.io/pypi/v/synapse-sr?color=black" alt="PyPI"></a>
   <a href="https://github.com/SharadhNaidu/synapse-sr/actions/workflows/tests.yml"><img src="https://github.com/SharadhNaidu/synapse-sr/actions/workflows/tests.yml/badge.svg" alt="tests"></a>
   <a href="https://sharadhnaidu.github.io/synapse-sr/"><img src="https://img.shields.io/badge/docs-online-black" alt="docs"></a>
+  <a href="https://huggingface.co/SharadhNaiduTrains/synapse-sr"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20weights-Hugging%20Face-black" alt="Hugging Face weights"></a>
   <a href="https://colab.research.google.com/github/SharadhNaidu/synapse-sr/blob/main/notebooks/quickstart.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"></a>
   <a href="https://kaggle.com/kernels/welcome?src=https://github.com/SharadhNaidu/synapse-sr/blob/main/notebooks/quickstart.ipynb"><img src="https://kaggle.com/static/images/open-in-kaggle.svg" alt="Open in Kaggle"></a>
 </p>
