@@ -38,6 +38,14 @@ def console():
     return Console(stderr=True, highlight=False) if Console is not None else None
 
 
+def glyphs():
+    """Typographic symbols, or ASCII stand-ins on consoles that cannot encode them (legacy Windows code pages)."""
+    enc = (getattr(sys.stderr, "encoding", None) or "ascii").lower().replace("-", "")
+    if enc.startswith("utf") or in_notebook():
+        return {"ok": "✓", "x": "×", "dot": "·", "le": "≤", "tau": "τ"}
+    return {"ok": "ok", "x": "x", "dot": "|", "le": "<=", "tau": " tau"}
+
+
 class RunProgress:
     """Stage spinner plus a tile bar for one super_resolve call."""
 
@@ -65,14 +73,15 @@ class RunProgress:
 
     def stage(self, text):
         if self.con is not None:
-            self.bar.update(self.task, description=f"{self.title} · {text}", total=None, completed=0, unit="")
+            self.bar.update(self.task, description=f"{self.title} {glyphs()['dot']} {text}", total=None, completed=0,
+                            unit="")
         else:
             sys.stderr.write(f"synapse-sr: {text}\n")
 
     def tiles(self, done, total):
         if self.con is not None:
-            self.bar.update(self.task, description=f"{self.title} · super-resolving", total=total, completed=done,
-                            unit="tiles")
+            self.bar.update(self.task, description=f"{self.title} {glyphs()['dot']} super-resolving", total=total,
+                            completed=done, unit="tiles")
         else:
             el = time.time() - self.t0
             sys.stderr.write("\rsynapse-sr: tile %d/%d  %.0f s%s" % (done, total, el, "\n" if done >= total else ""))
@@ -81,7 +90,7 @@ class RunProgress:
     def done(self, result, seconds):
         line = summary_line(result, seconds)
         if self.con is not None:
-            self.con.print(f"[green]✓[/green] {line}")
+            self.con.print(f"[green]{glyphs()['ok']}[/green] {line}")
         else:
             sys.stderr.write(f"synapse-sr: done - {line}\n")
 
@@ -91,8 +100,9 @@ def summary_line(r, seconds):
     worst = max(c.values()) if c else float("nan")
     high = float((r.support[r.valid] == 2).mean()) if r.valid.any() else 0.0
     h, w = r.image.shape[-2:]
-    return (f"{r.metadata.get('model', 'model')}: {w}×{h} px at {r.gsd:g} m in {seconds:.1f} s · "
-            f"consistency ≤ {worst:.2f} τ · {100 * high:.0f}% observation-determined")
+    g = glyphs()
+    return (f"{r.metadata.get('model', 'model')}: {w}{g['x']}{h} px at {r.gsd:g} m in {seconds:.1f} s {g['dot']} "
+            f"consistency {g['le']} {worst:.2f}{g['tau']} {g['dot']} {100 * high:.0f}% observation-determined")
 
 
 def summary_table(r):
@@ -102,10 +112,12 @@ def summary_table(r):
     t.add_column()
     m = r.metadata
     h, w = r.image.shape[-2:]
+    g = glyphs()
     t.add_row("model", str(m.get("model")))
-    t.add_row("output", f"{w} × {h} px · {r.gsd:g} m · bands {' '.join(m.get('bands', []))}")
-    t.add_row("backend", f"{m.get('scan_backend')} · {m.get('precision')} · tile {m.get('tile')} halo {m.get('halo')}")
-    t.add_row("consistency", "  ".join(f"{b} {v:.2f}τ" for b, v in r.consistency.items()))
+    t.add_row("output", f"{w} {g['x']} {h} px {g['dot']} {r.gsd:g} m {g['dot']} bands {' '.join(m.get('bands', []))}")
+    t.add_row("backend", f"{m.get('scan_backend')} {g['dot']} {m.get('precision')} {g['dot']} tile {m.get('tile')} "
+                         f"halo {m.get('halo')}")
+    t.add_row("consistency", "  ".join(f"{b} {v:.2f}{g['tau']}" for b, v in r.consistency.items()))
     if r.valid.any():
         s = r.support[r.valid]
         t.add_row("support", f"HIGH {100 * (s == 2).mean():.0f}%  MEDIUM {100 * (s == 1).mean():.0f}%  "

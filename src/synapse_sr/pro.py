@@ -134,7 +134,7 @@ class Pro:
         op = S2Forward(sd.pop("operator.weight"), target_m=10.0 / SCALE)
         net = {k[len("model."):]: v for k, v in sd.items() if k.startswith("model.")}
         if "conv_1.sk.weight" in net:
-            klass, model = Flash, SynapseFlashX5()
+            klass, model = Flash, SynapseFlashX5.from_state_dict(net)
             model.load_state_dict(net)
             model.reparameterise()
         else:

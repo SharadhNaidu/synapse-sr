@@ -9,6 +9,7 @@ from synapse_sr.io import geotiff
 
 BANDS = ("B04", "B03", "B02", "B08")
 CONTEXT_BANDS = ("B05", "B06", "B07", "B8A", "B11", "B12")
+MIN_SUM = 0.002                    # reflectance; below this a normalised difference is noise, not signal
 
 
 @dataclass(repr=False)
@@ -122,11 +123,7 @@ class Result:
 
     def ndvi(self) -> np.ndarray:
         """NDVI from the super-resolved B08 and B04, NaN where the input was invalid."""
-        r, n = self.image[0], self.image[3]
-        v = (n - r) / (n + r + 1e-6)
-        if self.valid is not None:
-            v = np.where(self.valid, v, np.nan)
-        return v
+        return self.indices()["ndvi"]
 
     def band(self, name: str) -> np.ndarray:
         """One band by name: B04 B03 B02 B08 (super-resolved) or a 20 m context band (replicated)."""
@@ -141,14 +138,22 @@ class Result:
 
         From the super-resolved bands: NDVI, SAVI, EVI, GNDVI (vegetation / crops) and NDWI (water). With 20 m
         context: NDRE (crop stress), NDBI (built-up), NBR (burn severity) and MNDWI (water / flood); these carry the
-        20 m spatial detail of their red-edge / SWIR band."""
-        r, g, b, n = (self.image[i].astype(np.float32) for i in range(4))
-        nd = lambda a, c: (a - c) / (a + c + 1e-6)
+        20 m spatial detail of their red-edge / SWIR band. Reflectance below zero (possible in L2A over dark water
+        and shadow) is treated as zero; normalised differences are NaN where both bands are essentially dark
+        (sum below 0.002) and lie in [-1, 1] elsewhere; EVI is clipped to [-1, 1]."""
+        r, g, b, n = (np.maximum(self.image[i].astype(np.float32), 0) for i in range(4))   # L2A can dip below 0
+
+        def nd(a, c):
+            s = a + c
+            with np.errstate(divide="ignore", invalid="ignore"):
+                return np.where(s > MIN_SUM, np.clip((a - c) / s, -1, 1), np.nan)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            evi = 2.5 * (n - r) / (n + 6 * r - 7.5 * b + 1.0)
         out = {"ndvi": nd(n, r), "ndwi": nd(g, n), "gndvi": nd(n, g),
                "savi": 1.5 * (n - r) / (n + r + 0.5),
-               "evi": 2.5 * (n - r) / (n + 6 * r - 7.5 * b + 1.0)}
+               "evi": np.clip(evi, -1, 1)}
         if self.context is not None:
-            re1, sw1, sw2 = self.band("B05"), self.band("B11"), self.band("B12")
+            re1, sw1, sw2 = (np.maximum(self.band(k), 0) for k in ("B05", "B11", "B12"))
             out.update({"ndre": nd(n, re1), "ndbi": nd(sw1, n), "nbr": nd(n, sw2), "mndwi": nd(g, sw1)})
         if self.valid is not None:
             out = {k: np.where(self.valid, v, np.nan) for k, v in out.items()}

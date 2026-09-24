@@ -41,6 +41,8 @@ nav:
   - Getting started:
       - Installation: installation.md
       - Quick start: quickstart.md
+      - Colab and Kaggle: guide/notebooks.md
+      - Choosing a model and a device: guide/models.md
   - User guide:
       - Inputs and preprocessing: guide/inputs.md
       - Outputs: guide/outputs.md
@@ -49,11 +51,13 @@ nav:
       - Offline and on-premises use: guide/offline.md
       - Getting Sentinel-2 data: guide/data.md
       - Command line: guide/cli.md
+      - Verify it yourself: guide/verify.md
   - Applications: applications.md
   - Examples: examples.md
   - How it works: method.md
   - API reference: api.md
   - Limitations: limitations.md
+  - FAQ: faq.md
   - Troubleshooting: troubleshooting.md
   - Changelog: changelog.md
 

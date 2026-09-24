@@ -13,6 +13,15 @@ ASSETS = {"B04": "red", "B03": "green", "B02": "blue", "B08": "nir", "B05": "red
           "B07": "rededge3", "B8A": "nir08", "B11": "swir16", "B12": "swir22"}
 
 
+def boa_offset(properties: dict) -> int:
+    """DN offset still to be applied to a STAC item's L2A assets: -1000 for processing baseline 04.00 or later,
+    unless the provider already removed it (Earth Search v1 flags this with ``earthsearch:boa_offset_applied``;
+    applying it twice pushes dark surfaces such as vegetation red and water below zero reflectance)."""
+    baseline = float(properties.get("s2:processing_baseline", "0") or 0)
+    applied = bool(properties.get("earthsearch:boa_offset_applied", False))
+    return -1000 if baseline >= 4.0 and not applied else 0
+
+
 def fetch_sentinel2(lat: float, lon: float, start: str, end: str, size_m: float = 2000.0,
                     out: Optional[str] = None, max_cloud: float = 20.0, api: str = EARTH_SEARCH) -> str:
     """Download the least-cloudy Sentinel-2 L2A scene over a point into a SYNAPSE-ready GeoTIFF.
@@ -70,8 +79,7 @@ def fetch_sentinel2(lat: float, lon: float, start: str, end: str, size_m: float 
             return src.read(1, window=wb, out_shape=(h, w), resampling=Resampling.nearest, boundless=True, fill_value=0)
 
     stack = np.stack([read(k) for k in ASSETS.values()])
-    baseline = float(item.properties.get("s2:processing_baseline", "0") or 0)
-    offset = -1000 if baseline >= 4.0 else 0
+    offset = boa_offset(item.properties)
     prof = dict(driver="GTiff", crs=crs, transform=tr, height=h, width=w, compress="deflate")
     with rasterio.open(out, "w", count=len(ASSETS), dtype="uint16", nodata=0, **prof) as d:
         d.write(stack.astype(np.uint16))

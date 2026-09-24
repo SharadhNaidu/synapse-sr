@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import platform
 import sys
 
@@ -90,6 +91,7 @@ def main(argv=None):
     ap.add_argument("--env", action="store_true", help="print environment diagnostics and exit")
     ap.add_argument("--models", action="store_true", help="list registered models and exit")
     ap.add_argument("--version", action="store_true", help="print the version and exit")
+    ap.add_argument("--debug", action="store_true", help="show full tracebacks on errors")
     a = ap.parse_args(argv)
     if a.version:
         from synapse_sr import __version__
@@ -104,8 +106,27 @@ def main(argv=None):
         return 0
     if not a.input or not a.output:
         ap.error("input and output are required (examples: synapse-sr --help)")
-    from synapse_sr import Pro, ui
-    model = Pro.from_pretrained(ALIASES.get(a.model, a.model), weights=a.weights, device=a.device)
+    if not os.path.exists(a.input):
+        return _fail(f"input not found: {a.input}")
+    try:
+        return _run(a)
+    except KeyboardInterrupt:
+        return _fail("interrupted", 130)
+    except Exception as e:
+        if a.debug:
+            raise
+        return _fail(f"{type(e).__name__}: {e}  (rerun with --debug for the traceback; see "
+                     "https://sharadhnaidu.github.io/synapse-sr/troubleshooting/)")
+
+
+def _fail(msg, code=1):
+    print(f"synapse-sr: error: {msg}", file=sys.stderr)
+    return code
+
+
+def _run(a):
+    from synapse_sr import load, ui
+    model = load(a.model, weights=a.weights, device=a.device)
     r = model.super_resolve(a.input, scl=None if str(a.scl).lower() == "none" else a.scl, offset=a.offset,
                             tile=a.tile, halo=a.halo, batch=a.batch,
                             progress=False if (a.quiet or a.json) else "auto")

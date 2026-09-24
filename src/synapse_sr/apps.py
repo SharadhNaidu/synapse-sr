@@ -55,7 +55,7 @@ def change(before: Result, after: Result, index: str = "ndvi", threshold: Option
         raise ValueError("before and after must be on the same grid")
     d = _index(after, index) - _index(before, index)
     thr = threshold if threshold is not None else (0.03 if index == "brightness" else 0.2)
-    rel = np.ones(d.shape, bool)
+    rel = np.isfinite(d)                                   # index undefined on either date (e.g. dark pixels)
     for r in (before, after):
         if r.valid is not None:
             rel &= r.valid

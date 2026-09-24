@@ -12,13 +12,32 @@
         - save_pretrained
         - to
 
+::: synapse_sr.Flash
+    options:
+      members:
+        - from_pretrained
+
 ::: synapse_sr.Result
     options:
       members:
-        - rgb
+        - summary
+        - show
+        - indices
         - ndvi
+        - band
+        - uncertainty
+        - interval
+        - rgb
         - to_xarray
         - save
+
+## Applications
+
+::: synapse_sr.change
+
+::: synapse_sr.Change
+
+::: synapse_sr.boundaries
 
 ::: synapse_sr.fetch_sentinel2
 
@@ -37,4 +56,6 @@ These are stable, but most users do not need them.
 | Variable | Effect |
 |---|---|
 | `SYNAPSE_CACHE` | weight cache directory (default `~/.cache/synapse`) |
-| `SYNAPSE_SR_DISABLE_FUSED` | `1` forces the PyTorch selective scan even when `mamba-ssm` is installed |
+| `SYNAPSE_SR_DISABLE_FUSED` | `1` ignores an installed `mamba-ssm` kernel |
+| `SYNAPSE_SR_DISABLE_TRITON` | `1` skips the Triton scan kernel on CUDA |
+| `SYNAPSE_SR_QUIET` | `1` silences progress bars and summaries everywhere |

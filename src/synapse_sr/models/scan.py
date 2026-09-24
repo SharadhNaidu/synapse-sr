@@ -19,6 +19,7 @@ import torch.nn.functional as F
 __all__ = ["chunked_selective_scan", "selective_scan_fn", "backend"]
 
 SAFE_DECAY = 120.0
+MAX_ELEMS = 1 << 25                  # state elements per piece (~128 MB in float32), bounds peak memory
 
 
 def chunked_selective_scan(u, delta, A, B, C, D=None, delta_bias=None, delta_softplus=True, chunk=64):
@@ -26,6 +27,28 @@ def chunked_selective_scan(u, delta, A, B, C, D=None, delta_bias=None, delta_sof
     dtype_in = u.dtype
     b, d, L = u.shape
     n = A.shape[1]
+    if B.dim() == 3:
+        B, C = B[:, None], C[:, None]
+    k = B.shape[1]
+    per = d // k
+    if b * d * n * L > MAX_ELEMS and (b > 1 or k > 1 or per % 2 == 0):
+        # samples, channel groups and channels are independent: run them in pieces
+        sl = lambda t, i, j: None if t is None else t[i:j]
+        if b > 1:
+            h = b // 2
+            parts = [chunked_selective_scan(u[i:j], delta[i:j], A, B[i:j], C[i:j], D, delta_bias, delta_softplus, chunk)
+                     for i, j in ((0, h), (h, b))]
+            return torch.cat(parts, 0)
+        if k > 1:
+            parts = [chunked_selective_scan(u[:, g * per:(g + 1) * per], delta[:, g * per:(g + 1) * per],
+                                            A[g * per:(g + 1) * per], B[:, g:g + 1], C[:, g:g + 1],
+                                            sl(D, g * per, (g + 1) * per), sl(delta_bias, g * per, (g + 1) * per),
+                                            delta_softplus, chunk) for g in range(k)]
+            return torch.cat(parts, 1)
+        h = d // 2
+        parts = [chunked_selective_scan(u[:, i:j], delta[:, i:j], A[i:j], B, C, sl(D, i, j), sl(delta_bias, i, j),
+                                        delta_softplus, chunk) for i, j in ((0, h), (h, d))]
+        return torch.cat(parts, 1)
     dt = delta.float()
     if delta_bias is not None:
         dt = dt + delta_bias.float()[:, None]
@@ -35,10 +58,6 @@ def chunked_selective_scan(u, delta, A, B, C, D=None, delta_bias=None, delta_sof
     amax = A.detach().float().abs().amax(1)[None, :, None]                  # worst chunk decay, exactly, per chunk size
     while chunk > 1 and float((F.pad(dt.detach(), (0, (chunk - L % chunk) % chunk)).unflatten(-1, (-1, chunk)).sum(-1) * amax).max()) > SAFE_DECAY:
         chunk //= 2
-    if B.dim() == 3:
-        B, C = B[:, None], C[:, None]
-    k = B.shape[1]
-    per = d // k
     pad = (chunk - L % chunk) % chunk
     T = L + pad
     nc = T // chunk
