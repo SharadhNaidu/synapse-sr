@@ -1,108 +1,69 @@
-"""Chunked selective scan: the Mamba recurrence without 81 sequential Python steps.
+"""Chunked selective scan: the Mamba recurrence in PyTorch, without a Python loop over the sequence.
 
-WHY. The raster scan adapted from SEN2SR is the right mechanism -- state propagates across the
-whole context instead of resetting every row -- but our reference implementation made it
-unaffordable: 12.2 s/step against 0.426 s for the row scan, and 8.5 GB, because it materialises
-(B, D, L, N) tensors and loops L times in Python.
+The recurrence h[t] = a[t] h[t-1] + b[t] has the closed form h[t] = sum_{s<=t} exp(c[t] - c[s]) b[s] with
+c = cumsum(log a), so within a chunk
 
-HOW. The recurrence x[t] = a[t] x[t-1] + b[t] has the closed form
+    h[t] = exp(c[t] - o) * cumsum_s( exp(o - c[s]) b[s] )[t]
 
-    x[t] = sum_{s<=t} exp(c[t] - c[s]) b[s],    c[t] = sum_{r<=t} log a[r]
-
-so a whole chunk can be done as ONE masked matmul instead of a loop. Writing it that way
-naively overflows, because exp(-c[s]) grows without bound as the decay accumulates. The fix is to
-process the sequence in CHUNKS and express every exponent RELATIVE TO THE CHUNK START: inside a
-chunk the exponent is bounded by that chunk's own decay, and the carried state moves between
-chunks sequentially. With L = 81 and chunk 16 that is 6 sequential steps instead of 81.
-
-This is the standard chunked/SSD formulation. Verified against the reference scan elementwise.
+-- elementwise ops and one cumsum, no (chunk x chunk) matrix. o is half the chunk's total decay, which bounds
+both exponents by half a chunk of decay; the state is then carried across chunks by an elementwise loop over the
+(few) chunk indices. When some chunk decays too fast for float32 (> 120) the chunk is halved, down to one
+step, where no exponential of an accumulated decay is formed at all. Forward error against a float64 sequential scan ~1.3e-7.
 """
 
 from __future__ import annotations
 
 import torch
+import torch.nn.functional as F
 
 __all__ = ["chunked_selective_scan", "selective_scan_fn", "backend"]
 
+SAFE_DECAY = 120.0
 
-def chunked_selective_scan(u, delta, A, B, C, D=None, delta_bias=None,
-                           delta_softplus=True, chunk=16):
-    """Same contract as selective_scan_ref, minus the options we do not use.
 
-    u, delta : (b, d, l)
-    A        : (d, n)
-    B, C     : (b, k, n, l) grouped, or (b, n, l)
-    D        : (d,)
-    """
+def chunked_selective_scan(u, delta, A, B, C, D=None, delta_bias=None, delta_softplus=True, chunk=64):
+    """u, delta (b, d, l); A (d, n); B, C (b, k, n, l) grouped or (b, n, l); D (d,)."""
     dtype_in = u.dtype
-    u = u.float()
-    delta = delta.float()
-    if delta_bias is not None:
-        delta = delta + delta_bias[..., None].float()
-    if delta_softplus:
-        delta = torch.nn.functional.softplus(delta)
-
     b, d, L = u.shape
     n = A.shape[1]
-    if B.dim() == 4:
-        per = d // B.shape[1]
-        B = B.float().repeat_interleave(per, dim=1)      # (b, d, n, l)
-        C = C.float().repeat_interleave(per, dim=1)
-    else:
-        B = B.float()[:, None].expand(b, d, n, L)
-        C = C.float()[:, None].expand(b, d, n, L)
-
+    dt = delta.float()
+    if delta_bias is not None:
+        dt = dt + delta_bias.float()[:, None]
+    if delta_softplus:
+        dt = F.softplus(dt)
+    uf = u.float()
+    amax = A.detach().float().abs().amax(1)[None, :, None]                  # worst chunk decay, exactly, per chunk size
+    while chunk > 1 and float((F.pad(dt.detach(), (0, (chunk - L % chunk) % chunk)).unflatten(-1, (-1, chunk)).sum(-1) * amax).max()) > SAFE_DECAY:
+        chunk //= 2
+    if B.dim() == 3:
+        B, C = B[:, None], C[:, None]
+    k = B.shape[1]
+    per = d // k
     pad = (chunk - L % chunk) % chunk
-    if pad:
-        u = torch.nn.functional.pad(u, (0, pad))
-        delta = torch.nn.functional.pad(delta, (0, pad))
-        B = torch.nn.functional.pad(B, (0, pad))
-        C = torch.nn.functional.pad(C, (0, pad))
-    T = u.shape[-1]
+    T = L + pad
     nc = T // chunk
-
-    # (b, d, nc, chunk) and (b, d, n, nc, chunk)
-    dl = delta.view(b, d, nc, chunk)
-    ul = u.view(b, d, nc, chunk)
-    Bl = B.view(b, d, n, nc, chunk)
-    Cl = C.view(b, d, n, nc, chunk)
-
-    # log decay per step, cumulative WITHIN the chunk
-    loga = dl.unsqueeze(2) * A[None, :, :, None, None]           # (b, d, n, nc, chunk) <= 0
-    cum = loga.cumsum(-1)
-    bu = (dl.unsqueeze(2) * Bl) * ul.unsqueeze(2)
-
-    # Contract the STATE dimension before building the chunk matrix. Forming
-    # exp(cum[t]-cum[s]) per (n, t, s) needs (b, d, n, nc, chunk, chunk), which was 13.2 GB here;
-    # factorising into exp(cum[t]) * exp(-cum[s]) lets n be summed by a matmul first and drops
-    # the n axis from the big tensor entirely.
-    #
-    # exp(-cum[s]) alone would overflow once the accumulated decay is large, so both factors are
-    # taken RELATIVE to half the chunk's total decay. Each exponent is then bounded by half a
-    # chunk of decay in either direction, which keeps float32 comfortable, and the offsets cancel
-    # exactly in the product.
-    # The factors are formed in float64: a clamp on the offset (the earlier float32 form) broke the bound
-    # once a chunk decayed by more than ~60 and produced inf * 0 = NaN on 0.9 % of outputs; float64 keeps
-    # both factors finite up to a chunk decay of ~1400, far beyond any softplus(delta) * |A| seen here.
-    off = cum[..., -1:].double() * 0.5
-    Ct = Cl.double() * (cum.double() - off).exp()                # (b, d, n, nc, chunk)
-    Bs = bu.double() * (off - cum.double()).exp()
-    G = torch.einsum("bdnck,bdncs->bdcks", Ct, Bs)               # (b, d, nc, chunk_t, chunk_s)
-    G = G * torch.ones(chunk, chunk, device=u.device, dtype=G.dtype).tril()
-    y_in = G.sum(-1).float()                                     # (b, d, nc, chunk)
-
-    # state carried across chunks, sequential in nc only (6 steps here instead of 81)
-    carry = torch.zeros(b, d, n, device=u.device)
-    outs = []
-    for i in range(nc):
-        cross = torch.einsum("bdnc,bdn->bdc", Cl[..., i, :] * cum[..., i, :].exp(), carry)
-        outs.append(y_in[..., i, :] + cross)
-        carry = carry * cum[..., i, -1].exp() + (bu[..., i, :] * (cum[..., i, -1:] - cum[..., i, :]).exp()).sum(-1)
-    # stack on the CHUNK-INDEX axis, not the last: chunks are (b, d, nc, chunk) and flattening
-    # a (b, d, chunk, nc) interleaving instead scrambles the sequence order entirely
-    y = torch.stack(outs, dim=-2).reshape(b, d, T)[..., :L]
+    dt = F.pad(dt, (0, pad)).view(b, k, per, 1, nc, chunk)
+    du = dt * F.pad(uf, (0, pad)).view(b, k, per, 1, nc, chunk)
+    Bl = F.pad(B.float(), (0, pad)).view(b, k, 1, n, nc, chunk)
+    Cl = F.pad(C.float(), (0, pad)).view(b, k, 1, n, nc, chunk)
+    cum = (dt * A.float().view(1, k, per, n, 1, 1)).cumsum(-1)             # (b, k, per, n, nc, chunk), <= 0
+    tot = cum[..., -1:]
+    if chunk == 1:
+        h = Bl * du
+    else:
+        off = tot * 0.5
+        h = (cum - off).exp() * ((off - cum).exp() * (Bl * du)).cumsum(-1)
+    decay = tot[..., 0].exp()                                                # (b, k, per, n, nc)
+    last = h[..., -1]
+    carry = torch.zeros_like(last[..., 0])
+    prev = []
+    for c in range(nc):
+        prev.append(carry)
+        carry = carry * decay[..., c] + last[..., c]
+    h = h + cum.exp() * torch.stack(prev, -1)[..., None]
+    y = (Cl * h).sum(3).reshape(b, d, T)[..., :L]
     if D is not None:
-        y = y + u[..., :L] * D.float()[None, :, None]
+        y = y + uf * D.float()[None, :, None]
     return y.to(dtype_in)
 
 
@@ -141,8 +102,14 @@ class _FusedScan(torch.autograd.Function):
 
 
 def backend(u):
-    """'fused' (mamba-ssm CUDA kernel) for CUDA tensors when the kernel is importable, else 'chunked'."""
-    return "fused" if selective_scan_cuda is not None and u.is_cuda else "chunked"
+    """'fused' (mamba-ssm CUDA kernel), else 'triton' (CUDA GPU with Triton, self-tested once), else 'pytorch'."""
+    if selective_scan_cuda is not None and u.is_cuda:
+        return "fused"
+    if u.is_cuda and os.environ.get("SYNAPSE_SR_DISABLE_TRITON", "0") != "1":
+        from . import scan_triton
+        if scan_triton.available(u):
+            return "triton"
+    return "pytorch"
 
 
 def selective_scan_fn(u, delta, A, B, C, D=None, z=None, delta_bias=None, delta_softplus=False,
@@ -151,6 +118,10 @@ def selective_scan_fn(u, delta, A, B, C, D=None, z=None, delta_bias=None, delta_
     otherwise the chunked PyTorch scan (forward relative error 1.7e-7, gradients <= 5.8e-7 against the fused kernel)."""
     if z is not None or return_last_state:
         raise NotImplementedError("z gating / last-state return are not used by SYNAPSE")
-    if backend(u) == "fused" and B.dim() == 4:
+    kind = backend(u)
+    if kind == "fused" and B.dim() == 4:
         return _FusedScan.apply(u, delta, A, B, C, D, delta_bias, delta_softplus)
+    if kind == "triton" and B.dim() == 4 and not torch.is_grad_enabled():
+        from .scan_triton import triton_scan
+        return triton_scan(u, delta, A, B, C, D=D, delta_bias=delta_bias, delta_softplus=delta_softplus)
     return chunked_selective_scan(u, delta, A, B, C, D=D, delta_bias=delta_bias, delta_softplus=delta_softplus)

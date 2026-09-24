@@ -3,6 +3,7 @@ import pathlib
 
 MANIFEST_DIR = pathlib.Path(__file__).parent
 DEFAULT = "pro-v2"
+DEFAULT_FLASH = "flash-v1"
 
 
 def manifest(name=DEFAULT):
@@ -13,7 +14,7 @@ def manifest(name=DEFAULT):
     m = json.loads(p.read_text())
     if not str(m.get("url", "")).startswith("http"):
         raise RuntimeError(f"pretrained weights for {name!r} are not published yet; "
-                           f"pass a local checkpoint: Pro.from_pretrained(weights='path/to/model.safetensors')")
+                           f"pass a local checkpoint: from_pretrained(weights='path/to/model.safetensors')")
     return m
 
 

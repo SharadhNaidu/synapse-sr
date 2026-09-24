@@ -1,16 +1,21 @@
 """High-level interface: load a SYNAPSE Pro checkpoint and super-resolve Sentinel-2 scenes."""
 
+import contextlib
 import os
-from typing import Optional, Sequence, Union
+import time
+from typing import Callable, Optional, Sequence, Union
 
 import numpy as np
 import safetensors.torch as st
 import torch
 import torch.nn.functional as F
 
+from synapse_sr import ui
 from synapse_sr.io import geotiff
 from synapse_sr.io.sentinel2 import select_bands, to_reflectance
 from synapse_sr.models import baseline, projector
+from synapse_sr.models.fastphys import FastPhysics
+from synapse_sr.models.flash import SynapseFlashX5
 from synapse_sr.models.forward import S2Forward
 from synapse_sr.models.pro import SynapseProX5, fold_v1_gate
 from synapse_sr.models.scan import backend
@@ -86,10 +91,17 @@ class Pro:
         self.model = model.to(self.device).eval()
         self.op = op.to(self.device)
         self.meta = meta or {}
+        self._fast = None
 
     def __repr__(self):
-        scan = "fused" if backend(torch.zeros(1, device=self.device)) == "fused" else "pytorch"
-        return f"Pro(name={self.meta.get('name', 'local')!r}, device={str(self.device)!r}, scan={scan!r})"
+        return (f"{type(self).__name__}(name={self.meta.get('name', 'local')!r}, device={str(self.device)!r}, "
+                f"backend={self._backend(torch.zeros(1, device=self.device))!r})")
+
+    def _backend(self, y):
+        return backend(y)
+
+    def _default_tile(self, kind):
+        return 64 if kind in ("fused", "triton") else 32
 
     @classmethod
     def from_pretrained(cls, name: str = registry.DEFAULT, weights: Optional[PathLike] = None,
@@ -118,11 +130,19 @@ class Pro:
             meta = dict(m)
         sd = st.load_file(str(weights))
         if "operator.weight" not in sd:
-            raise ValueError(f"{weights} is not a SYNAPSE Pro checkpoint (no operator.weight)")
+            raise ValueError(f"{weights} is not a SYNAPSE checkpoint (no operator.weight)")
         op = S2Forward(sd.pop("operator.weight"), target_m=10.0 / SCALE)
-        model = SynapseProX5()
-        model.load_state_dict(fold_v1_gate({k[len("model."):]: v for k, v in sd.items() if k.startswith("model.")}))
-        return cls(model, op, device, meta)
+        net = {k[len("model."):]: v for k, v in sd.items() if k.startswith("model.")}
+        if "conv_1.sk.weight" in net:
+            klass, model = Flash, SynapseFlashX5()
+            model.load_state_dict(net)
+            model.reparameterise()
+        else:
+            klass, model = Pro, SynapseProX5()
+            model.load_state_dict(fold_v1_gate(net))
+        if cls is not Pro and klass is not cls:
+            raise ValueError(f"{weights} is a {klass.__name__} checkpoint; load it with {klass.__name__}.from_pretrained")
+        return klass(model, op, device, meta)
 
     def save_pretrained(self, path: PathLike) -> PathLike:
         """Write model and operator to a single ``.safetensors`` file loadable with ``weights=``."""
@@ -136,13 +156,21 @@ class Pro:
         self.device = torch.device(device)
         self.model.to(self.device)
         self.op.to(self.device)
+        self._fast = None
         return self
+
+    def _physics(self):
+        """Periodic closed-form physics, used only to precondition the exact solves (same answers, fewer steps)."""
+        if self._fast is None:
+            self._fast = FastPhysics(self.op)
+        return self._fast
 
     @torch.no_grad()
     def super_resolve(self, src: Union[PathLike, np.ndarray], band_names: Optional[Sequence[str]] = None,
                       scl: Optional[Union[PathLike, np.ndarray]] = "auto", nodata: Optional[float] = None,
                       offset: Optional[float] = None, tile: Optional[int] = None, halo: int = 16,
-                      context: bool = True) -> Result:
+                      context: bool = True, batch: Optional[int] = None,
+                      progress: Union[bool, str, Callable[[int, int], None]] = "auto") -> Result:
         """Super-resolve one Sentinel-2 scene.
 
         Parameters
@@ -164,7 +192,14 @@ class Pro:
             Added to DN before dividing by 10000 (``-1000`` for L2A processing baseline 04.00 and later).
             ``None`` (default) reads the GeoTIFF ``BOA_ADD_OFFSET`` tag, else 0. Ignored for reflectance input.
         tile, halo:
-            Source-pixel tile size and context halo. Default tile: 64 on the fused CUDA path, 32 otherwise.
+            Source-pixel tile size and context halo. Default tile: 64 on a GPU scan (mamba-ssm or Triton), 32 on
+            the PyTorch fallback.
+        batch:
+            Tiles processed together (default 8 on CUDA, 1 on CPU). Lower it if GPU memory is short.
+        progress:
+            ``"auto"`` (default) shows a live progress bar in terminals and notebooks and stays silent when output
+            is piped or logged; ``True`` / ``False`` force it on / off; a callable ``f(done, total)`` receives the
+            tile count instead. ``SYNAPSE_SR_QUIET=1`` silences everything.
         context:
             Carry the six native 20 m bands (B05 B06 B07 B8A B11 B12) onto the output grid by pixel replication,
             so red-edge and SWIR indices (NDRE, NDBI, NBR, MNDWI) are available. They are NOT super-resolved.
@@ -175,6 +210,19 @@ class Pro:
             2.0 m RGBN image with error-scale map, support classes, validity mask, consistency and the
             observed / inferred decomposition.
         """
+        show = progress is True or (progress == "auto" and ui.interactive())
+        callback = progress if callable(progress) else None
+        t0 = time.time()
+        with (ui.RunProgress(type(self).__name__) if show else contextlib.nullcontext()) as bar:
+            r = self._run(src, band_names, scl, nodata, offset, tile, halo, context, batch, bar, callback)
+        r.metadata["seconds"] = round(time.time() - t0, 3)
+        if show:
+            bar.done(r, r.metadata["seconds"])
+        return r
+
+    def _run(self, src, band_names, scl, nodata, offset, tile, halo, context, batch, bar, callback):
+        if bar:
+            bar.stage("reading input")
         profile, tags = None, {}
         if _is_path(src):
             arr, profile, names, tags = geotiff.read(src)
@@ -209,36 +257,56 @@ class Pro:
             valid &= ~np.isin(sc, SCL_INVALID)
 
         y10 = torch.tensor(to_reflectance(arr, offset=offset), dtype=torch.float32, device=self.device)[None]
-        fused = backend(y10) == "fused"
-        tile = tile or (64 if fused else 32)
+        kind = self._backend(y10)
+        tile = tile or self._default_tile(kind)
         amp = _amp_dtype(self.device)
         H, W = y10.shape[-2:]
         y4 = y10[:, :4]
-        lam = baseline.select_lambda(self.op, y4)
+        if bar:
+            bar.stage("calibrating the physics baseline")
+        fast = self._physics()
+        lam = baseline.select_lambda(self.op, y4, fast=fast)
         x = torch.zeros(1, 4, SCALE * H, SCALE * W, device=self.device)
         conf = torch.zeros_like(x)
         base = torch.zeros_like(x)
-        wins = []
+        jobs = []
         for i in range(0, H, tile):
             for j in range(0, W, tile):
                 i1, j1 = min(i + tile, H), min(j + tile, W)
                 r0, c0, r1, c1 = max(i - halo, 0), max(j - halo, 0), min(i1 + halo, H), min(j1 + halo, W)
-                xb = baseline.window(self.op, y4[..., r0:r1, c0:c1], lam)
+                jobs.append((i, j, i1, j1, r0, c0, r1, c1))
+        groups = {}
+        for jb in jobs:                                   # equal-shape windows run as one batch (all solves are per sample)
+            groups.setdefault((jb[6] - jb[4], jb[7] - jb[5]), []).append(jb)
+        bs = batch or (8 if self.device.type == "cuda" else 1)
+        wins = []
+        for shape, members in groups.items():
+            for k in range(0, len(members), bs):
+                part = members[k:k + bs]
+                yb = torch.cat([y10[..., r0:r1, c0:c1] for _, _, _, _, r0, c0, r1, c1 in part])
+                xb = baseline.window(self.op, yb[:, :4], lam, fast=fast)
                 if amp is not None:
                     with torch.autocast("cuda", dtype=amp):
-                        o = self.model(y10[..., r0:r1, c0:c1])
+                        o = self.model(yb)
                 else:
-                    o = self.model(y10[..., r0:r1, c0:c1])
-                xw = xb + projector.apply(self.op, o["delta"].float())
+                    o = self.model(yb)
+                xw = xb + projector.apply(self.op, o["delta"].float(), fast=fast)
                 cw = F.softplus(o["conf_logit"].float()) + 1e-4
-                a, b = SCALE * (i - r0), SCALE * (j - c0)
-                h, w = SCALE * (i1 - i), SCALE * (j1 - j)
-                dst = (Ellipsis, slice(SCALE * i, SCALE * i1), slice(SCALE * j, SCALE * j1))
-                x[dst] = xw[..., a:a + h, b:b + w]
-                conf[dst] = cw[..., a:a + h, b:b + w]
-                base[dst] = xb[..., a:a + h, b:b + w]
-                wins.append((r0, c0, r1, c1))
+                for n, (i, j, i1, j1, r0, c0, r1, c1) in enumerate(part):
+                    a, b = SCALE * (i - r0), SCALE * (j - c0)
+                    h, w = SCALE * (i1 - i), SCALE * (j1 - j)
+                    dst = (Ellipsis, slice(SCALE * i, SCALE * i1), slice(SCALE * j, SCALE * j1))
+                    x[dst] = xw[n, :, a:a + h, b:b + w]
+                    conf[dst] = cw[n, :, a:a + h, b:b + w]
+                    base[dst] = xb[n, :, a:a + h, b:b + w]
+                    wins.append((r0, c0, r1, c1))
+                if bar:
+                    bar.tiles(len(wins), len(jobs))
+                if callback:
+                    callback(len(wins), len(jobs))
 
+        if bar:
+            bar.stage("checking observation consistency")
         tau = baseline.tau_for(self.op)
         num = torch.zeros(4, device=self.device)
         cnt = 0
@@ -258,7 +326,7 @@ class Pro:
         v2 = np.repeat(np.repeat(valid, SCALE, 0), SCALE, 1)
         support[~v2] = 0
         gsd = abs(profile["transform"].a) / SCALE if profile else 10.0 / SCALE
-        meta = {"scale": SCALE, "model": self.meta.get("name", "local"), "scan_backend": "fused" if fused else "pytorch",
+        meta = {"scale": SCALE, "model": self.meta.get("name", "local"), "scan_backend": kind,
                 "precision": "bfloat16" if amp is not None else "float32", "tile": tile, "halo": halo,
                 "lambda": lam.tolist(), "bands": list(self.op.bands),
                 "support_classes": {"2": "HIGH: observation-determined", "1": "MEDIUM",
@@ -273,3 +341,23 @@ class Pro:
                       consistency=dict(zip(self.op.bands, rms.tolist())), gsd=gsd, metadata=meta, profile=profile,
                       support=support, valid=v2, x_base=base[0].cpu().numpy(), prior=prior.cpu().numpy(),
                       context=ctx, calibration=self.meta.get("calibration"))
+
+
+class Flash(Pro):
+    """SYNAPSE Flash: the same observation-consistent pipeline as :class:`Pro` (``x_base + P_N(delta)``) with a
+    0.6 M-parameter convolutional detail network instead of the Mamba network. No sequence scan, so it is fast on
+    CPUs, laptops, integrated graphics and Apple silicon. Its body was initialised from SEN2SR-Lite (ESAOpenSR,
+    CC0-1.0) and fine-tuned for the x5 null-space task.
+    """
+
+    @classmethod
+    def from_pretrained(cls, name: str = registry.DEFAULT_FLASH, weights: Optional[PathLike] = None,
+                        device: Optional[Union[str, torch.device]] = None) -> "Flash":
+        """Load a SYNAPSE Flash checkpoint; arguments as :meth:`Pro.from_pretrained`."""
+        return super().from_pretrained(name, weights, device)
+
+    def _backend(self, y):
+        return "cnn"
+
+    def _default_tile(self, kind):
+        return 128

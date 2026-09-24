@@ -129,7 +129,7 @@ def test_outputs_decomposition_support_and_helpers(model):
     q = r.rgb()
     assert q.shape == (100, 100, 3) and q.dtype == np.uint8
     assert r.ndvi().shape == (100, 100)
-    assert r.metadata["scan_backend"] in ("fused", "pytorch") and r.metadata["precision"] in ("bfloat16", "float32")
+    assert r.metadata["scan_backend"] in ("fused", "triton", "pytorch") and r.metadata["precision"] in ("bfloat16", "float32")
 
 
 def test_projection_leaves_the_observation_unchanged(model):
@@ -182,13 +182,13 @@ def test_one_call_function_and_cli(model, tmp_path, capsys):
     write_tif(src, scene(16, 16))
     r = synapse_sr.super_resolve(str(src), weights=p, device="cpu", tile=16)
     assert r.image.shape == (4, 80, 80)
-    assert cli([str(src), str(tmp_path / "o.tif"), "--weights", p, "--device", "cpu", "--tile", "16", "--no-confidence"]) == 0
+    assert cli([str(src), str(tmp_path / "o.tif"), "--weights", p, "--device", "cpu", "--tile", "16", "--no-confidence", "--json"]) == 0
     out = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
     assert out["shape"] == [4, 80, 80]
     with rasterio.open(tmp_path / "o.tif") as d:
         assert d.count == 4
     assert cli(["--version"]) == 0 and synapse_sr.__version__ in capsys.readouterr().out
-    assert cli(["--env"]) == 0 and '"torch"' in capsys.readouterr().out
+    assert cli(["--env", "--json"]) == 0 and '"torch"' in capsys.readouterr().out
 
 
 # ------------------------------------------------------------------ applications

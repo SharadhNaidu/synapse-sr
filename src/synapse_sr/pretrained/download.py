@@ -1,7 +1,6 @@
 import hashlib
 import os
 import pathlib
-import shutil
 import tempfile
 import urllib.request
 
@@ -23,9 +22,21 @@ def fetch(url, expected_sha256, filename):
     dst = cache_dir() / filename
     if not dst.exists():
         dst.parent.mkdir(parents=True, exist_ok=True)
+        from synapse_sr import ui
         with tempfile.NamedTemporaryFile(delete=False, dir=dst.parent) as tmp:
-            with urllib.request.urlopen(url) as r:
-                shutil.copyfileobj(r, tmp)
+            try:
+                with urllib.request.urlopen(url, timeout=60) as r:
+                    bar = ui.DownloadBar(filename, int(r.headers.get("Content-Length") or 0) or None)
+                    try:
+                        for chunk in iter(lambda: r.read(1 << 20), b""):
+                            tmp.write(chunk)
+                            bar.update(len(chunk))
+                    finally:
+                        bar.close()
+            except BaseException:
+                tmp.close()
+                os.unlink(tmp.name)
+                raise
         os.replace(tmp.name, dst)
     got = sha256(dst)
     if got != expected_sha256:

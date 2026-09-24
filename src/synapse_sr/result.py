@@ -11,7 +11,7 @@ BANDS = ("B04", "B03", "B02", "B08")
 CONTEXT_BANDS = ("B05", "B06", "B07", "B8A", "B11", "B12")
 
 
-@dataclass
+@dataclass(repr=False)
 class Result:
     """Output of :meth:`synapse_sr.Pro.super_resolve`.
 
@@ -62,6 +62,63 @@ class Result:
     @property
     def shape(self):
         return self.image.shape
+
+    def __repr__(self):
+        c = ", ".join(f"{b}={v:.2f}" for b, v in self.consistency.items())
+        return (f"Result(model={self.metadata.get('model')!r}, shape={self.image.shape}, gsd={self.gsd:g} m, "
+                f"consistency_tau=[{c}])")
+
+    def summary(self, print_: bool = True) -> dict:
+        """Key facts about the run: size, backend, per-band consistency, support fractions, time.
+        Prints a formatted table (Rich) unless ``print_=False``; always returns them as a dict."""
+        from synapse_sr import ui
+        out = {"model": self.metadata.get("model"), "shape": list(self.image.shape), "gsd_m": self.gsd,
+               "consistency_rms_over_tau": dict(self.consistency), "backend": self.metadata.get("scan_backend"),
+               "precision": self.metadata.get("precision"), "seconds": self.metadata.get("seconds"),
+               "invalid_input_fraction": self.metadata.get("invalid_input_fraction")}
+        if self.support is not None and self.valid is not None and self.valid.any():
+            s = self.support[self.valid]
+            out["support_fraction"] = {"high": float((s == 2).mean()), "medium": float((s == 1).mean()),
+                                       "low": float((s == 0).mean())}
+        if print_:
+            con = ui.console()
+            if con is not None:
+                con.print(ui.summary_table(self))
+            else:
+                import json
+                print(json.dumps(out, indent=1))
+        return out
+
+    def show(self, what=("image", "support"), figsize=None):
+        """Quick matplotlib look at the result: any of ``"image"`` (true colour), ``"x_base"`` (the
+        observation-determined baseline), ``"prior"`` (learned detail), ``"support"``, ``"uncertainty"``,
+        ``"ndvi"``. Requires ``matplotlib``."""
+        import matplotlib.pyplot as plt
+        what = (what,) if isinstance(what, str) else tuple(what)
+        fig, axes = plt.subplots(1, len(what), figsize=figsize or (4.2 * len(what), 4.4), squeeze=False)
+        for ax, w in zip(axes[0], what):
+            if w == "image":
+                ax.imshow(self.rgb())
+            elif w == "x_base":
+                ax.imshow(Result(self.x_base, self.confidence, self.consistency, self.gsd, valid=self.valid).rgb())
+            elif w == "prior":
+                v = np.abs(self.prior[:3]).mean(0)
+                ax.imshow(v, cmap="magma", vmax=np.percentile(v, 99))
+            elif w == "support":
+                from matplotlib.colors import ListedColormap
+                ax.imshow(self.support, cmap=ListedColormap(["#ef4444", "#f59e0b", "#22c55e"]), vmin=0, vmax=2,
+                          interpolation="nearest")
+            elif w == "uncertainty":
+                u = self.uncertainty().mean(0)
+                ax.imshow(u, cmap="viridis", vmax=np.nanpercentile(u, 99))
+            elif w == "ndvi":
+                ax.imshow(self.ndvi(), cmap="RdYlGn", vmin=-0.2, vmax=0.9)
+            else:
+                raise ValueError(f"unknown panel {w!r}")
+            ax.set_title(w)
+            ax.set_axis_off()
+        fig.tight_layout()
+        return fig
 
     def ndvi(self) -> np.ndarray:
         """NDVI from the super-resolved B08 and B04, NaN where the input was invalid."""
