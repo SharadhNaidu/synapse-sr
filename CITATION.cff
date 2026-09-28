@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use synapse-sr, please cite it as below."
+title: "synapse-sr: observation-consistent super-resolution of Sentinel-2 imagery"
+type: software
+authors:
+  - family-names: Naidu
+    given-names: Sharadh
+repository-code: "https://github.com/SharadhNaidu/synapse-sr"
+url: "https://sharadhnaidu.github.io/synapse-sr/"
+license: CC0-1.0
+keywords:
+  - Sentinel-2
+  - super-resolution
+  - remote sensing
+  - earth observation
+  - deep learning
+  - uncertainty

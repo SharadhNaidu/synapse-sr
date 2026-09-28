@@ -41,7 +41,12 @@ r.summary()                                          # size, consistency, suppor
 
 ```bash
 synapse-sr sentinel2_l2a.tif sentinel2_2m.tif        # the same from the shell
+synapse-sr --fetch 12.92,77.50 --dates 2025-01-01:2025-03-15 out.tif --preview preview.png   # download + run
+synapse-sr scenes/ scenes_2m/ --cog                  # a whole folder, as Cloud-Optimised GeoTIFFs
 ```
+
+Every common task on one page: **[cheat sheet](https://sharadhnaidu.github.io/synapse-sr/cheatsheet/)**. AI assistants
+and agents can read the whole documentation from [`llms.txt`](https://sharadhnaidu.github.io/synapse-sr/llms.txt).
 
 ## Benchmarks
 

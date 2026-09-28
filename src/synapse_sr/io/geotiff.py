@@ -24,7 +24,7 @@ def scaled_transform(transform, scale):
     return transform * Affine.scale(1.0 / scale)
 
 
-def write(path, image, profile, scale, band_names=None, extra=None):
+def write(path, image, profile, scale, band_names=None, extra=None, cog=False):
     rio = _rasterio()
     image = np.asarray(image, np.float32)
     if extra is not None:
@@ -38,3 +38,31 @@ def write(path, image, profile, scale, band_names=None, extra=None):
         if band_names:
             for i, n in enumerate(band_names, 1):
                 dst.set_band_description(i, n)
+    if cog:
+        to_cog(path)
+
+
+def to_cog(path):
+    """Rewrite a GeoTIFF in place as a Cloud-Optimised GeoTIFF (internal tiles + overviews), for web maps and GIS."""
+    import os
+    import shutil
+    rio = _rasterio()
+    from rasterio.enums import Resampling
+    tmp = str(path) + ".tmp.tif"
+    shutil.move(str(path), tmp)
+    try:
+        with rio.open(tmp, "r+") as d:
+            n = max(d.width, d.height)
+            levels = [f for f in (2, 4, 8, 16, 32) if n // f >= 256]
+            if levels:
+                d.build_overviews(levels, Resampling.average)
+        from rasterio.shutil import copy
+        copy(tmp, str(path), driver="COG", compress="DEFLATE", overview_resampling="AVERAGE")
+    except Exception:                                   # older GDAL without the COG driver: tiled GeoTIFF + overviews
+        copy_kw = dict(driver="GTiff", tiled=True, blockxsize=512, blockysize=512, compress="deflate", copy_src_overviews=True)
+        from rasterio.shutil import copy
+        copy(tmp, str(path), **copy_kw)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+

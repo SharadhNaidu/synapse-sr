@@ -10,7 +10,8 @@ readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "CC0-1.0"}
 authors = [{name = "Sharadh Naidu", email = "sharadhanaidu@rvu.edu.in"}]
-keywords = ["sentinel-2", "super-resolution", "remote-sensing", "earth-observation", "deep-learning", "mamba", "geotiff"]
+keywords = ["sentinel-2", "super-resolution", "satellite-imagery", "remote-sensing", "earth-observation", "deep-learning",
+            "mamba", "geotiff", "gis", "copernicus", "uncertainty", "ndvi", "change-detection", "cartosat", "india"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Science/Research",

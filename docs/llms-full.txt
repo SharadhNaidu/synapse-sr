@@ -1,0 +1,1758 @@
+# synapse-sr
+
+> synapse-sr is an open-source Python package (pip install synapse-sr) that super-resolves Sentinel-2 L2A satellite
+> imagery from 10 m to a 2 m output grid (red, green, blue, near-infrared), with a physics model of the Sentinel-2
+> sensor that keeps every output consistent with the measurement, a per-pixel support map separating measured from
+> inferred detail, and calibrated uncertainty. Two models: Flash (default, ~1 s per 1.28 km scene on a laptop CPU)
+> and Pro (Mamba state-space network, most detail, best on a GPU). GeoTIFF in, GeoTIFF out; CLI and Python API;
+> runs on Colab, Kaggle, Windows, macOS, Linux, CPU-only and offline.
+
+Minimal use:
+
+```python
+import synapse_sr
+r = synapse_sr.super_resolve("sentinel2_l2a.tif")      # model="pro" for Pro
+r.save("sentinel2_2m.tif")
+```
+
+CLI: `synapse-sr scene.tif scene_2m.tif`, `synapse-sr --fetch LAT,LON --dates START:END out.tif`, `synapse-sr scenes/ out/`.
+
+## Docs
+
+- [Quick start](https://sharadhnaidu.github.io/synapse-sr/quickstart/): install, get a scene, super-resolve, save
+- [Cheat sheet](https://sharadhnaidu.github.io/synapse-sr/cheatsheet/): every common task on one page
+- [Colab and Kaggle](https://sharadhnaidu.github.io/synapse-sr/guide/notebooks/): notebook setup
+- [Choosing a model and a device](https://sharadhnaidu.github.io/synapse-sr/guide/models/): Flash vs Pro, CPU/GPU/MPS
+- [Inputs](https://sharadhnaidu.github.io/synapse-sr/guide/inputs/): accepted formats, bands, offsets, cloud masks
+- [Outputs](https://sharadhnaidu.github.io/synapse-sr/guide/outputs/): Result attributes and the saved GeoTIFF
+- [Support, confidence and consistency](https://sharadhnaidu.github.io/synapse-sr/guide/support/): trust layers
+- [Applications](https://sharadhnaidu.github.io/synapse-sr/applications/): crops, urban, water, disaster change
+- [Examples](https://sharadhnaidu.github.io/synapse-sr/examples/): end-to-end recipes
+- [API reference](https://sharadhnaidu.github.io/synapse-sr/api/)
+- [Troubleshooting](https://sharadhnaidu.github.io/synapse-sr/troubleshooting/) and [FAQ](https://sharadhnaidu.github.io/synapse-sr/faq/)
+
+## Optional
+
+- [Full documentation as one file](https://sharadhnaidu.github.io/synapse-sr/llms-full.txt)
+- [Source code](https://github.com/SharadhNaidu/synapse-sr), [PyPI](https://pypi.org/project/synapse-sr/),
+  [weights on Hugging Face](https://huggingface.co/SharadhNaiduTrains/synapse-sr)
+
+
+---
+
+<!-- index.md -->
+
+<p align="center">
+  <img src="assets/logo-wordmark.svg#only-light" alt="synapse-sr" width="440">
+  <img src="assets/logo-wordmark-dark.svg#only-dark" alt="synapse-sr" width="440">
+</p>
+
+<p align="center"><b>Sentinel-2 at 2 m, with every pixel accounted for.</b></p>
+
+<p align="center">
+  <img src="assets/gifs/rv_university.gif" alt="RV University, Bengaluru: Sentinel-2 10 m versus synapse-sr 2 m" width="460">
+</p>
+
+**synapse-sr** turns a Sentinel-2 L2A scene into a 2.0 m red, green, blue and near-infrared GeoTIFF. A physical
+model of the instrument pins everything the satellite measured. The network only adds what 10 m pixels cannot
+show, and every result says which is which.
+
+```python
+import synapse_sr
+
+r = synapse_sr.super_resolve("sentinel2_l2a.tif")
+r.save("sentinel2_2m.tif")
+```
+
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/SharadhNaidu/synapse-sr/blob/main/notebooks/quickstart.ipynb)
+[![Open in Kaggle](https://kaggle.com/static/images/open-in-kaggle.svg)](https://kaggle.com/kernels/welcome?src=https://github.com/SharadhNaidu/synapse-sr/blob/main/notebooks/quickstart.ipynb)
+
+## What you can do with it
+
+<div class="grid cards" markdown>
+
+- **Crop monitoring**
+
+    NDVI, SAVI, EVI and red-edge NDRE at 2 m, field-boundary maps, statistics restricted to
+    observation-determined pixels.
+
+    `r.indices()["ndvi"]` · `synapse_sr.boundaries(r, "field")`
+
+- **Urban analysis**
+
+    Building and road edges, built-up index, per-building detection.
+
+    `synapse_sr.boundaries(r, "urban")` · `r.indices()["ndbi"]`
+
+- **Water and floods**
+
+    2 m water masks, shoreline strength, flooded area between two dates in km².
+
+    `synapse_sr.change(before, after, "ndwi")`
+
+- **Disaster assessment**
+
+    Burn scars, landslides and debris. Change is flagged only where both dates are trustworthy.
+
+    `synapse_sr.change(before, after, "nbr")`
+
+</div>
+
+Worked examples: [Applications](applications.md).
+
+## Flash or Pro
+
+| | **Flash** (default) | **Pro** |
+|---|---|---|
+| Network | ~0.6 M-parameter CNN, distilled from Pro | 14.4 M-parameter Mamba state-space model |
+| Speed | ~1 s per 1.28 km scene on a laptop CPU | ~5 s per scene on a GPU |
+| Runs best on | anything: CPU, laptops, integrated graphics, Apple silicon, ARM, GPU | GPU (Colab, Kaggle, workstations) |
+| Guarantees | observation-consistent, support map, calibrated uncertainty | the same |
+
+More: [Choosing a model and a device](guide/models.md).
+
+## Why trust it
+
+| | |
+|---|---|
+| **Observation-consistent by construction** | `x_hat = x_base + P_N(delta)`: the network's contribution lies in the null space of the Sentinel-2 forward model, so re-observing the output reproduces the measurement. |
+| **Accountable** | per-pixel support (observation-determined versus prior-dominated), calibrated uncertainty, validity mask and a measured round-trip consistency on every result. |
+| **Geospatially exact** | GeoTIFF in, GeoTIFF out, CRS and bounds preserved, direct x5 onto a grid that shares the input origin. |
+| **Runs anywhere** | CUDA, Triton, or pure PyTorch on CPU; live progress bars in terminals and notebooks; fully offline once the weights are local. |
+
+
+
+---
+
+<!-- installation.md -->
+
+# Installation
+
+## Requirements
+
+| | |
+|---|---|
+| Python | 3.8 or newer |
+| PyTorch | 1.13 or newer (CPU or CUDA build) |
+| Other | `numpy`, `scipy`, `safetensors`, `rasterio`, `affine`, `rich`, installed automatically |
+
+## Install
+
+=== "pip (PyPI)"
+
+    ```bash
+    pip install synapse-sr
+    ```
+
+=== "pip (GitHub)"
+
+    ```bash
+    pip install git+https://github.com/SharadhNaidu/synapse-sr.git
+    ```
+
+=== "From source"
+
+    ```bash
+    git clone https://github.com/SharadhNaidu/synapse-sr.git
+    cd synapse-sr
+    pip install -e ".[all,test]"
+    ```
+
+Install the PyTorch build that matches your hardware first if you need a specific CUDA version. See
+[pytorch.org](https://pytorch.org/get-started/locally/).
+
+## Optional extras
+
+| Extra | Installs | Enables |
+|---|---|---|
+| `synapse-sr[stac]` | `pystac-client` | [`fetch_sentinel2`](guide/data.md) for downloading a scene |
+| `synapse-sr[xarray]` | `xarray` | `Result.to_xarray()` and xarray inputs |
+| `synapse-sr[all]` | both of the above | |
+| `synapse-sr[cuda]` | `mamba-ssm` | the fused CUDA selective-scan kernel |
+
+## Platforms
+
+| Platform | Pro scan backend | Recommended model |
+|---|---|---|
+| Google Colab, Kaggle (GPU) | `triton`, compiled on first use; nothing extra to install | Pro |
+| Linux + NVIDIA GPU | `triton`; `fused` if `mamba-ssm` is installed | Pro |
+| Windows + NVIDIA GPU | `pytorch` (exact, slower) | Pro or Flash |
+| CPU only, laptops, integrated graphics | `pytorch` | Flash |
+| macOS (Intel or Apple silicon), ARM Linux | `pytorch` | Flash |
+
+All backends give the same numbers to about 1e-5 relative error; only the speed differs. See
+[Choosing a model and a device](guide/models.md).
+
+### Optional: the fused mamba-ssm kernel
+
+`mamba-ssm` compiles CUDA code and must match your PyTorch and CUDA versions:
+
+```bash
+pip install mamba-ssm --no-build-isolation
+```
+
+If it is installed but was built for a different PyTorch, synapse-sr warns and uses Triton or the PyTorch path
+instead of failing. `SYNAPSE_SR_DISABLE_FUSED=1` and `SYNAPSE_SR_DISABLE_TRITON=1` switch those backends off.
+
+## Check the installation
+
+```bash
+synapse-sr --env
+```
+
+This prints the synapse-sr, Python, PyTorch, numpy, rasterio and GDAL versions, the CPU thread count, whether
+CUDA, bfloat16 and Apple MPS are available, and which scan backend Pro will use (`--json` for a machine-readable
+version). `synapse-sr --models` lists the registered checkpoints and whether they are published.
+
+
+---
+
+<!-- quickstart.md -->
+
+# Quick start
+
+!!! tip "No installation needed to try it"
+    [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/SharadhNaidu/synapse-sr/blob/main/notebooks/quickstart.ipynb)
+    [![Open in Kaggle](https://kaggle.com/static/images/open-in-kaggle.svg)](https://kaggle.com/kernels/welcome?src=https://github.com/SharadhNaidu/synapse-sr/blob/main/notebooks/quickstart.ipynb)
+    runs the whole tour below on a free GPU. See [Colab and Kaggle](guide/notebooks.md).
+
+## 1. Install
+
+```bash
+pip install "synapse-sr[stac]"      # [stac] adds the Sentinel-2 downloader used below
+synapse-sr --env                    # what hardware and kernels will be used
+```
+
+## 2. Get a scene
+
+```python
+import synapse_sr
+
+scene = synapse_sr.fetch_sentinel2(lat=12.9237, lon=77.4987,          # RV University, Bengaluru
+                                   start="2025-01-01", end="2025-03-15", size_m=1280)
+```
+
+`scene` is a 10-band GeoTIFF on the 10 m grid, with its cloud mask saved next to it and applied automatically.
+Any Sentinel-2 L2A GeoTIFF of your own works the same way (see [Inputs](guide/inputs.md)).
+
+## 3. Super-resolve
+
+```python
+r = synapse_sr.super_resolve(scene)
+```
+
+In a terminal or notebook you see a live progress bar and then a one-line summary:
+
+```text
+✓ synapse-flash-v1: 640×640 px at 2 m in 0.9 s · consistency ≤ 9.72τ · 27% observation-determined
+```
+
+That line was measured on a laptop CPU (Intel i9, no GPU used). Pro (`model="pro"`) processes the same scene in about
+5 s on an A100 slice with the Triton kernel, the kind of GPU runtime Colab and Kaggle give you.
+
+`synapse_sr.super_resolve` loads the default model (Flash) once and caches it. To choose the model and the device:
+
+```python
+from synapse_sr import Pro, Flash
+
+model = Flash.from_pretrained(device="cpu")         # default model: fast on any CPU, laptop or ARM machine
+model = Pro.from_pretrained(device="cuda")          # most detail; GPU recommended
+r = model.super_resolve(scene)
+r = synapse_sr.super_resolve(scene, model="pro")    # or in one call
+```
+
+## 4. Look at it
+
+```python
+r.summary()                                          # table: size, backend, consistency, support, time
+r.show(["image", "x_base", "prior", "support"])      # needs matplotlib
+```
+
+| Panel | Meaning |
+|---|---|
+| `image` | the 2 m result |
+| `x_base` | what the 10 m observation alone determines |
+| `prior` | what the network added; invisible to the sensor, so the observation neither confirms nor contradicts it |
+| `support` | green: observation-determined · amber: medium · red: prior-dominated or masked |
+
+## 5. Save it
+
+```python
+r.save("rvu_2m.tif")     # GeoTIFF, same CRS and bounds: B04 B03 B02 B08, ERRSCALE x4, SUPPORT
+```
+
+It opens directly in QGIS or ArcGIS, or with `rasterio`.
+
+## 6. Use it
+
+```python
+idx = r.indices()                                    # ndvi savi evi gndvi ndwi, + ndre ndbi nbr mndwi
+fields = synapse_sr.boundaries(r, "field")           # crop-parcel edges
+urban = synapse_sr.boundaries(r, "urban")            # building and road edges
+err = r.uncertainty()                                # calibrated expected error per pixel
+
+before = synapse_sr.super_resolve(synapse_sr.fetch_sentinel2(12.9237, 77.4987, "2024-01-01", "2024-03-15", size_m=1280))
+flood = synapse_sr.change(before, r, "ndwi")         # two dates of the same place -> changed area in km²
+print(f"{flood.area_km2:.3f} km2 changed")
+```
+
+See [Applications](applications.md) for crop monitoring, urban analysis, water and disaster assessment.
+
+## Command line
+
+```bash
+synapse-sr scene.tif scene_2m.tif                    # Pro, progress bar, summary table
+synapse-sr scene.tif scene_2m.tif --model flash --device cpu
+synapse-sr scene.tif scene_2m.tif --json             # machine-readable summary on stdout
+synapse-sr --models                                  # what is published
+```
+
+Next: [Choosing a model and a device](guide/models.md) · [Inputs and preprocessing](guide/inputs.md).
+
+
+---
+
+<!-- cheatsheet.md -->
+
+# Cheat sheet
+
+Everything you usually need, on one page. Every snippet runs as written once you have a Sentinel-2 GeoTIFF
+called `scene.tif` (or use `fetch_sentinel2` to get one).
+
+## Install
+
+```bash
+pip install synapse-sr                 # core
+pip install "synapse-sr[stac]"         # + download scenes with fetch_sentinel2 / --fetch
+pip install "synapse-sr[all]"          # + xarray
+synapse-sr --env                       # what hardware and kernels will be used
+```
+
+## Command line
+
+| Task | Command |
+|---|---|
+| Super-resolve a GeoTIFF (Flash, the default) | `synapse-sr scene.tif scene_2m.tif` |
+| Use Pro (most detail, best on a GPU) | `synapse-sr scene.tif scene_2m.tif --model pro` |
+| Download a scene and super-resolve it | `synapse-sr --fetch 12.92,77.50 --dates 2025-01-01:2025-03-15 out.tif` |
+| Every GeoTIFF in a folder | `synapse-sr scenes/ scenes_2m/` |
+| Cloud-Optimised GeoTIFF for web maps | `synapse-sr scene.tif out.tif --cog` |
+| Also save a preview image | `synapse-sr scene.tif out.tif --preview preview.png` |
+| Four bands only, for a GIS | `synapse-sr scene.tif out.tif --no-confidence` |
+| Machine-readable output for scripts | `synapse-sr scene.tif out.tif --json` |
+| Force CPU | `synapse-sr scene.tif out.tif --device cpu` |
+| List models / versions | `synapse-sr --models`, `synapse-sr --version` |
+
+## Python: the essentials
+
+```python
+import synapse_sr
+
+r = synapse_sr.super_resolve("scene.tif")                 # Flash; model="pro" for Pro
+r.save("scene_2m.tif")                                    # georeferenced GeoTIFF (cog=True for a COG)
+r.summary()                                               # size, consistency, support, time
+```
+
+## Choose a model and a device
+
+```python
+from synapse_sr import Flash, Pro
+
+flash = Flash.from_pretrained()                           # ~1 s per 1.28 km scene, any CPU or GPU
+pro = Pro.from_pretrained(device="cuda")                  # most detail
+r = flash.super_resolve("scene.tif")
+```
+
+## Get data
+
+```python
+import synapse_sr
+
+scene = synapse_sr.fetch_sentinel2(lat=12.9237, lon=77.4987, start="2025-01-01", end="2025-03-15", size_m=2000)
+r = synapse_sr.super_resolve(scene)                       # cloud mask and radiometric offset handled automatically
+```
+
+## Look at it
+
+```python
+import synapse_sr
+
+r = synapse_sr.super_resolve("scene.tif")
+r.quicklook("preview.png")                                # 10 m | 2 m | support, side by side
+r.show(["image", "x_base", "prior", "support", "uncertainty", "ndvi"])
+rgb = r.rgb()                                             # (5H, 5W, 3) uint8 true colour
+```
+
+## Trust layers
+
+```python
+import synapse_sr
+
+r = synapse_sr.super_resolve("scene.tif")
+r.x_base          # what the 10 m measurement determines
+r.prior           # what the network added (x_base + prior == image)
+r.support         # 2 measured, 1 medium, 0 inferred or invalid
+r.uncertainty()   # calibrated expected error per pixel and band
+r.interval(0.9)   # half-width of the 90 % interval
+r.valid           # False on NoData, cloud, shadow, cirrus, saturation
+```
+
+## Applications
+
+```python
+import synapse_sr
+
+r = synapse_sr.super_resolve("scene.tif")
+idx = r.indices()                                         # ndvi savi evi gndvi ndwi ndre ndbi nbr mndwi
+fields = synapse_sr.boundaries(r, "field")                # also "water", "urban"
+
+before = synapse_sr.super_resolve("before.tif")
+after = synapse_sr.super_resolve("after.tif")
+flood = synapse_sr.change(before, after, "ndwi")          # also "ndvi", "nbr", "ndbi", "brightness"
+print(flood.area_km2, flood.unreliable_fraction)
+```
+
+## Batches
+
+```python
+import synapse_sr
+
+report = synapse_sr.super_resolve_folder("scenes/", "scenes_2m/", cog=True)   # skips *_scl.tif and existing outputs
+failed = [r for r in report if "error" in r]
+```
+
+## Other inputs
+
+```python
+import numpy as np
+import synapse_sr
+
+arr = np.random.randint(500, 3000, (10, 64, 64)).astype(np.uint16)       # (C, H, W) DN or reflectance
+r = synapse_sr.super_resolve(arr, band_names=["B04", "B03", "B02", "B08", "B05", "B06", "B07", "B8A", "B11", "B12"])
+r.save("result.npz")                                                     # arrays have no georeference
+```
+
+torch tensors `(C, H, W)` and xarray `DataArray`s with a `band` coordinate work the same way.
+
+## Useful options
+
+| Option | Meaning |
+|---|---|
+| `model="flash"` / `"pro"` | which network (one call API) |
+| `device="cpu"`, `"cuda"`, `"mps"` | where to run |
+| `tta=True` | average over 8 flips / rotations; small accuracy gain, 8x network time |
+| `scl="scene_SCL.tif"`, `scl=None` | cloud mask file, or no masking |
+| `offset=-1000` | radiometric offset for raw baseline 04.00+ DN without a tag |
+| `tile=`, `batch=` | override the automatic memory-aware tiling |
+| `progress=False` | silence the progress bar (`SYNAPSE_SR_QUIET=1` everywhere) |
+| `discrepancy=4` | how tightly the physics fits the measurement, in sensor-noise units |
+
+
+---
+
+<!-- guide/notebooks.md -->
+
+# Colab and Kaggle
+
+The quick-start notebook runs unchanged on both platforms:
+
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/SharadhNaidu/synapse-sr/blob/main/notebooks/quickstart.ipynb)
+[![Open in Kaggle](https://kaggle.com/static/images/open-in-kaggle.svg)](https://kaggle.com/kernels/welcome?src=https://github.com/SharadhNaidu/synapse-sr/blob/main/notebooks/quickstart.ipynb)
+
+It downloads a real Sentinel-2 scene, super-resolves it, and walks through crop monitoring, urban analysis and
+flood / landslide change detection.
+
+## Google Colab
+
+1. Open the notebook with the badge above.
+2. *Runtime → Change runtime type → T4 GPU* (optional; the CPU runtime works too, more slowly).
+3. Run the first cell:
+
+    ```python
+    %pip install -q "synapse-sr[stac,xarray]" matplotlib
+    ```
+
+    No restart is needed. Colab already ships PyTorch and Triton.
+4. Check the environment:
+
+    ```python
+    import sys
+    !{sys.executable} -m synapse_sr --env        # works in any Jupyter; the shorter `!synapse-sr --env` on Colab and Kaggle
+    ```
+
+    On a GPU runtime `pro_scan_backend` reads `triton`. Triton compiles its kernel once per session, which
+    takes a few seconds on the first scene.
+
+## Kaggle
+
+1. Open the notebook with the badge above, or *Create → New notebook → File → Import notebook* and paste the
+   GitHub URL of `notebooks/quickstart.ipynb`.
+2. In the right-hand panel: *Session options → Accelerator → GPU T4 x2 or P100*, and *Internet → On*. Internet
+   access is needed for the one-time weight download and for `fetch_sentinel2`.
+3. Run the cells in order.
+
+!!! tip "Without internet on Kaggle"
+    Add the weights as a Kaggle dataset: download `synapse-pro-v2.safetensors` from
+    [Hugging Face](https://huggingface.co/SharadhNaiduTrains/synapse-sr) and upload it. Then load it with
+    `Pro.from_pretrained(weights="/kaggle/input/<dataset>/synapse-pro-v2.safetensors")`. No network access is
+    needed after that.
+
+## Using your own files
+
+=== "Colab"
+
+    ```python
+    from google.colab import files
+    up = files.upload()                                  # pick your Sentinel-2 GeoTIFF
+    r = model.super_resolve(next(iter(up)))
+    r.save("result_2m.tif"); files.download("result_2m.tif")
+    ```
+
+    Or mount Google Drive: `from google.colab import drive; drive.mount("/content/drive")`.
+
+=== "Kaggle"
+
+    Add the GeoTIFF as a dataset (*Add data → Upload*), then:
+
+    ```python
+    r = model.super_resolve("/kaggle/input/<dataset>/scene.tif")
+    r.save("/kaggle/working/scene_2m.tif")              # appears under Output
+    ```
+
+## Speed and memory
+
+| Runtime | Model | Notes |
+|---|---|---|
+| Colab / Kaggle GPU | Pro | Triton scan kernel; the default of 8 tiles per batch fits a T4 (16 GB) |
+| Colab / Kaggle CPU | Flash (default) | works well: on Kaggle's free 2-core CPU runtime the whole quick-start notebook (install, three scene downloads, three super-resolutions, all plots) finishes in about 3 minutes |
+
+If the GPU runs out of memory, lower `batch` (tiles per forward pass) or `tile`:
+
+```python
+from synapse_sr import Pro
+
+model = Pro.from_pretrained()
+r = model.super_resolve("scene.tif", batch=2)          # 2 tiles per forward pass
+```
+
+
+---
+
+<!-- guide/models.md -->
+
+# Choosing a model and a device
+
+synapse-sr ships two networks behind one pipeline. Both produce `x_hat = x_base + P_N(delta)`: the same physics
+baseline, the same null-space projection, and the same support, consistency and uncertainty outputs. They differ
+only in the network that predicts `delta`.
+
+| | **Flash** (default) | **Pro** |
+|---|---|---|
+| Network | `SynapseFlashX5`: re-parameterised SPAN-style CNN on all ten bands, ~0.6 M parameters at inference, distilled from Pro | `SynapseProX5`: Mamba state-space backbone with a 20 m spectral-context stem, 14.4 M parameters |
+| Context | local convolutions (dilated receptive field over the whole tile) | whole tile (global scan) |
+| Speed, 1.28 km scene | ~1 s on a laptop CPU, ~0.7 s on a laptop GPU | ~5 s on an A100 slice, ~25 s on a laptop GPU without Triton |
+| Best hardware | anything: CPU, laptop, integrated graphics, Apple silicon, ARM, any GPU | NVIDIA GPU |
+| One call | `synapse_sr.super_resolve(src)` | `synapse_sr.super_resolve(src, model="pro")` |
+| Load | `Flash.from_pretrained()` | `Pro.from_pretrained()` |
+| CLI | `synapse-sr in.tif out.tif` (default) | `synapse-sr in.tif out.tif --model pro` |
+
+```python
+import synapse_sr
+
+from synapse_sr import Pro, Flash
+
+flash = Flash.from_pretrained()                   # default: fast on any machine
+pro = Pro.from_pretrained()                       # most detail; best on a GPU
+```
+
+`Pro.from_pretrained(weights=...)` also accepts a Flash checkpoint and returns a `Flash` object, so code that
+loads local files does not need to know which kind of checkpoint it has.
+
+On the official opensr-test benchmark (README) the two score within a few thousandths of each other; Flash was
+trained to reproduce Pro's output (knowledge distillation) on real Sentinel-2 / NAIP pairs, a streamed NAIP corpus
+and ISRO Cartosat-derived pairs.
+
+## Test-time augmentation
+
+`super_resolve(..., tta=True)` averages the network over the 8 flips and 90-degree rotations of each tile before
+the physics projection. On the benchmark it changes the metrics by a few thousandths (slightly better spectral angle
+and detail correlation); it costs 8x the network time, which is cheap for Flash.
+
+## Devices
+
+| `device=` | Used for |
+|---|---|
+| `None` (default) | CUDA when available, else CPU |
+| `"cuda"`, `"cuda:1"` | NVIDIA GPUs; bfloat16 autocast on GPUs that support it |
+| `"cpu"` | any machine; results equal the GPU path within floating-point rounding |
+| `"mps"` | Apple silicon GPU (experimental; `"cpu"` is the tested path on macOS) |
+
+## How Pro's scan runs
+
+Pro's Mamba layers need a selective scan. synapse-sr picks the fastest exact implementation available:
+
+| Backend | When | |
+|---|---|---|
+| `fused` | `mamba-ssm` installed and importable | CUDA kernel from the Mamba authors |
+| `triton` | CUDA GPU with Triton (Colab, Kaggle, most Linux PyTorch installs) | synapse-sr's own kernel; it self-tests against the exact scan once per process and is skipped if the test fails |
+| `pytorch` | everything else (CPU, Windows, macOS) | exact chunked scan in plain PyTorch |
+
+All three agree to about 1e-5 relative error, and `result.metadata["scan_backend"]` records which one ran.
+`SYNAPSE_SR_DISABLE_FUSED=1` and `SYNAPSE_SR_DISABLE_TRITON=1` switch the first two off.
+
+## Throughput tips
+
+- **Several scenes:** create the model once and reuse it. `synapse_sr.super_resolve` already caches it.
+- **GPU memory:** `batch` sets how many tiles run together (default 8 on CUDA, 1 on CPU). Lower it if memory is short.
+- **Containers with a CPU quota** (Docker, Kubernetes, Kubeflow): PyTorch sizes its thread pool from the host's
+  core count, not the quota. Set `OMP_NUM_THREADS` (or call `torch.set_num_threads`) to the number of cores you
+  actually have. Oversubscription can make CPU runs many times slower.
+
+
+---
+
+<!-- guide/inputs.md -->
+
+# Inputs and preprocessing
+
+## Accepted inputs
+
+| Input | Example |
+|---|---|
+| GeoTIFF path | `model.super_resolve("scene.tif")` |
+| numpy array `(C, H, W)` | `model.super_resolve(arr, band_names=[...])` |
+| torch tensor `(C, H, W)` or `(1, C, H, W)` | `model.super_resolve(tensor)` |
+| xarray DataArray with a `band` coordinate | `model.super_resolve(cube.isel(time=0))` |
+
+DN (L2A integer counts) and reflectance (floats up to about 1) are both accepted; reflectance is detected
+automatically. NaN and infinite values are treated as NoData.
+
+## Bands
+
+The model uses ten bands:
+
+| Role | Bands | Native resolution |
+|---|---|---|
+| Super-resolved | B04, B03, B02, B08 | 10 m |
+| Spectral context | B05, B06, B07, B8A, B11, B12 | 20 m |
+
+The bands are identified as follows:
+
+1. From `band_names`, or from the GeoTIFF band descriptions. Names are case-insensitive, and `B2` and `B02` are equivalent.
+2. Otherwise, from the channel count:
+    - 10 channels are read as the order above;
+    - 12 channels as the L2A order B01 to B12 without B10;
+    - 13 channels as the L1C order.
+
+Any other layout raises a `ValueError` that names the accepted orders.
+
+The 20 m bands should be on the 10 m grid with nearest-neighbour resampling. This is how Earth Engine,
+`fetch_sentinel2` and `gdalwarp -r near` deliver them. They inform the network but are not returned at 2 m.
+
+## Radiometry
+
+Reflectance is `(DN + offset) / 10000`. Products from processing baseline 04.00 onward, from January 2022,
+carry `BOA_ADD_OFFSET = -1000`:
+
+| Source | What to pass |
+|---|---|
+| `fetch_sentinel2` output | nothing: the offset is stored in the `BOA_ADD_OFFSET` tag and applied automatically |
+| Earth Engine `COPERNICUS/S2_SR_HARMONIZED` | nothing: the offset is already removed |
+| SAFE / JP2 from the Copernicus Data Space, baseline 04.00 or later | `offset=-1000` (CLI: `--offset -1000`) |
+
+## Masking
+
+| Source | Masked |
+|---|---|
+| NoData | the raster NoData value, NaN / inf, all-zero pixels |
+| Scene classification (SCL) | classes 0 no data, 1 saturated or defective, 3 cloud shadow, 8 and 9 cloud, 10 cirrus |
+
+```python
+from synapse_sr import Pro
+model = Pro.from_pretrained()
+
+result = model.super_resolve("scene.tif", scl="scene_SCL.tif")   # 10 m or 20 m SCL
+result = model.super_resolve("scene.tif")                        # uses scene_scl.tif next to the input if present
+result = model.super_resolve("scene.tif", scl=None)              # no SCL masking
+```
+
+Masked pixels are written as NaN and receive support class 0. No heuristic cloud detection is performed.
+
+## Grid checks
+
+GeoTIFF inputs must be north-up with square pixels of about 10 m. Rotated or sheared transforms, non-square
+pixels and other resolutions are rejected with an explanatory error. They are not silently resampled.
+
+
+---
+
+<!-- guide/outputs.md -->
+
+# Outputs
+
+`super_resolve` returns a [`Result`](../api.md#synapse_sr.Result).
+
+| Attribute | Shape / type | Meaning |
+|---|---|---|
+| `image` | `(4, 5H, 5W)` float32 | surface reflectance, B04 B03 B02 B08, 2.0 m grid |
+| `confidence` | `(4, 5H, 5W)` float32 | predicted absolute error scale (reflectance); learned, not calibrated |
+| `support` | `(5H, 5W)` uint8 | 2 HIGH, 1 MEDIUM, 0 LOW or invalid; see [Support](support.md) |
+| `valid` | `(5H, 5W)` bool | False where the input was NoData, cloud, shadow, cirrus or saturated |
+| `consistency` | dict | per-band RMS of `A(image) - y` in noise units |
+| `x_base` | `(4, 5H, 5W)` | the observation-determined baseline |
+| `prior` | `(4, 5H, 5W)` | structure added by the learned prior; `x_base + prior == image` |
+| `gsd` | float | output grid spacing in metres |
+| `metadata` | dict | scan backend, precision, tiling, offset, SCL source, regularisation weights |
+
+## Helpers
+
+```python
+import synapse_sr
+result = synapse_sr.super_resolve("scene.tif")
+
+result.rgb()          # (5H, 5W, 3) uint8 true-colour quicklook, 2-98 % stretch
+result.ndvi()         # (5H, 5W) NDVI, NaN where invalid
+result.to_xarray()    # DataArray (band, y, x) with map coordinates (needs xarray)
+result.save("out.tif")
+```
+
+## Saved GeoTIFF
+
+| Band | Name | Content |
+|---|---|---|
+| 1 to 4 | `B04` `B03` `B02` `B08` | reflectance, float32, NaN where invalid |
+| 5 to 8 | `ERRSCALE_B04` ... `ERRSCALE_B08` | predicted error scale |
+| 9 | `SUPPORT` | 2 / 1 / 0 |
+
+`save(path, with_confidence=False)` (CLI `--no-confidence`) writes bands 1 to 4 only. For array inputs without
+georeferencing, `save` writes a compressed `.npz`.
+
+The CRS is copied from the input. The geotransform keeps the input origin and divides the pixel size by five,
+so the output covers exactly the input bounds. Output pixel `5i + r` lies inside input pixel `i`, and `r = 2` is
+centred on it.
+
+
+---
+
+<!-- guide/support.md -->
+
+# Support, confidence and consistency
+
+Every pixel of a super-resolved image mixes two things. The first is what the 10 m measurement determines. The
+second is what the model infers from learned priors. synapse-sr keeps the two apart and reports them.
+
+## Decomposition
+
+```python
+import synapse_sr
+result = synapse_sr.super_resolve("scene.tif")
+
+result.x_base   # determined by the Sentinel-2 observation
+result.prior    # contributed by the learned prior; invisible to the sensor
+```
+
+`x_base` is a deterministic, regularised inversion of the sensor model. `prior` lies in the null space of the
+forward operator: re-observing the image with the Sentinel-2 model gives the same measurement with or without
+it.
+
+## Support classes
+
+`result.support` measures the prior's contribution against each band's sensor noise level `tau_b`:
+
+| Class | Value | Rule | Reading |
+|---|---|---|---|
+| HIGH | 2 | max over bands of `|prior| / tau_b < 3` | essentially observation-determined |
+| MEDIUM | 1 | between 3 and 10 | the prior adds noticeable structure |
+| LOW | 0 | above 10, or invalid input | prior-dominated: treat as inferred |
+
+The thresholds are heuristic and are reported in `result.metadata["support_classes"]`.
+
+## Calibrated uncertainty
+
+```python
+import synapse_sr
+result = synapse_sr.super_resolve("scene.tif")
+
+err = result.uncertainty()        # (4, 5H, 5W) expected absolute error, reflectance
+half = result.interval(0.9)       # reference within image +/- half with probability 0.9
+```
+
+`uncertainty()` comes from an error model shipped with the checkpoint. It regresses log |error| on the learned
+error scale, the prior's magnitude relative to sensor noise, local edge strength and variance, brightness, NDVI and
+band, against a 2 m HR reference (GeoSR development split). `interval()` scales it with split-conformal quantiles.
+Measured on development patches not used for fitting or calibration, for Pro v2 (Pro v1: 82 / 91 / 96 %):
+
+| Level | Measured coverage |
+|---|---|
+| 80 % | 82 % |
+| 90 % | 91 % |
+| 95 % | 96 % |
+
+The error map also ranks error. Keeping the 50 % of pixels it marks as most reliable roughly halves the mean
+absolute error, and its rank correlation with the actual error is 0.58.
+
+`result.confidence` is the network's raw error-scale output. Use `uncertainty()` or `interval()` for decisions.
+
+## Consistency
+
+`result.consistency` re-observes the output with the Sentinel-2 forward model and compares it with the input,
+per band, in units of that band's noise level:
+
+```python
+{"B04": 5.7, "B03": 3.5, "B02": 3.0, "B08": 3.2}
+```
+
+The physics baseline deliberately fits the measurement to about 4 noise units, not 1: a real scene also carries
+forward-model error (point-spread function, registration), and fitting it to sensor noise alone turns that error into
+false fine detail. Because one regularisation weight is shared by all bands, individual bands can sit a few units
+above or below 4. Values far beyond that (above 5 x `discrepancy`) trigger a warning: check the band order, the
+radiometric offset and that the input is L2A on the 10 m grid. `super_resolve(..., discrepancy=1)` fits to sensor
+noise alone. The learned detail itself is invisible to this measurement by construction (it lies in the null space).
+The measurement is taken on the assembled mosaic, so tiling seams would show up here.
+
+
+
+---
+
+<!-- guide/tiling.md -->
+
+# Large scenes and tiling
+
+Scenes of any height and width are processed in tiles with a halo of real context and assembled on the output
+grid. The output is always exactly `5H x 5W`: square, portrait, landscape and odd sizes are all supported, and
+no region is dropped.
+
+```python
+from synapse_sr import Pro
+model = Pro.from_pretrained()
+
+result = model.super_resolve("large_scene.tif", tile=64, halo=16)
+```
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `tile` | automatic: the largest tile that fits the free GPU memory (or a 6 GB RAM budget on CPU) | tile edge in 10 m source pixels |
+| `batch` | automatic on GPU (up to 8), 1 on CPU | tiles per forward pass |
+| `halo` | 16 (below `tile`) | extra context on each side, discarded after processing |
+
+The regularisation weight of the baseline is chosen once per scene, so it is identical across tiles. Tiled and
+single-window results agree to 0.4 % relative RMS in the interior. The package tests check this
+(`tests/test_api.py::test_tiling_is_seamless`).
+
+## Memory
+
+Peak memory grows with `(tile + 2 * halo)^2`. The automatic choice leaves headroom; if memory is still short, pass a
+smaller `tile` or `batch`. Larger tiles are faster: a 32-pixel tile with a 16-pixel halo computes four times its
+output area, a 96-pixel tile under twice.
+
+## Throughput
+
+| Input (10 m px) | Output (2 m px) | Backend | Time |
+|---|---|---|---|
+| 128 x 128 | 640 x 640 | fused CUDA, A100 (shared) | 29 s |
+| 513 x 677 | 2565 x 3385 | fused CUDA, A100 (shared) | 272 s |
+| 64 x 80 | 320 x 400 | PyTorch, laptop CPU | 5.4 min |
+
+Timings include the per-scene baseline calibration and were taken while other jobs shared the GPU.
+
+
+---
+
+<!-- guide/offline.md -->
+
+# Offline and on-premises use
+
+synapse-sr never needs the network for processing. The only network access is the one-time download of the
+weights by `Pro.from_pretrained()`, and that is skipped when you pass a local file.
+
+## Air-gapped machines
+
+1. On a connected machine, download the checkpoint from
+   [Hugging Face](https://huggingface.co/SharadhNaiduTrains/synapse-sr) and build a wheelhouse:
+
+    ```bash
+    pip download synapse-sr -d wheelhouse
+    ```
+
+2. Copy `wheelhouse/` and the `.safetensors` file to the target machine, then:
+
+    ```bash
+    pip install --no-index --find-links wheelhouse synapse-sr
+    synapse-sr scene.tif scene_2m.tif --weights /opt/models/synapse-pro-v2.safetensors
+    ```
+
+```python
+import synapse_sr
+
+from synapse_sr import Pro
+model = Pro.from_pretrained(weights="/opt/models/synapse-pro-v2.safetensors")
+```
+
+## Cache
+
+Downloaded weights are stored in `~/.cache/synapse`, or in `$SYNAPSE_CACHE` if set. They are verified by
+SHA-256 on every load. A corrupted or tampered file raises an error that names the expected and actual hashes.
+
+## Your own checkpoints
+
+```python
+from synapse_sr import Pro
+model = Pro.from_pretrained()
+
+model.save_pretrained("my-model.safetensors")         # model + sensor operator in one file
+Pro.from_pretrained(weights="my-model.safetensors")
+```
+
+
+---
+
+<!-- guide/data.md -->
+
+# Getting Sentinel-2 data
+
+## fetch_sentinel2
+
+```bash
+pip install "synapse-sr[stac]"
+```
+
+```python
+import synapse_sr
+
+from synapse_sr import fetch_sentinel2
+
+path = fetch_sentinel2(lat=30.935, lon=75.800, start="2024-11-01", end="2025-01-31", size_m=3000)
+```
+
+`fetch_sentinel2` searches the public [Earth Search](https://earth-search.aws.element84.com/v1) STAC catalogue.
+It picks the least-cloudy L2A scene over the point and writes:
+
+- a 10-band GeoTIFF in model order, with named bands, on the 10 m grid (20 m bands nearest-resampled);
+- the offset in the `BOA_ADD_OFFSET` tag, plus the STAC item id and cloud cover;
+- `<name>_scl.tif`, the scene classification layer.
+
+`super_resolve` picks up the offset and the SCL file automatically. Pass `api=` to use another STAC API that
+serves the `sentinel-2-l2a` collection with Earth Search asset names.
+
+## Other sources
+
+| Source | Notes |
+|---|---|
+| Copernicus Data Space (SAFE) | stack B02-B12 onto the 10 m grid with nearest resampling; pass `offset=-1000` for baseline 04.00 or later |
+| Google Earth Engine `COPERNICUS/S2_SR_HARMONIZED` | export at `scale=10`; the offset is already removed |
+| `cubo` or `stackstac` cubes | pass `cube.isel(time=k)` directly; band names are read from the `band` coordinate |
+| `odc-stac` datasets | pass `ds.isel(time=k).to_array("band")` |
+
+
+---
+
+<!-- guide/cli.md -->
+
+# Command line
+
+```bash
+synapse-sr INPUT.tif OUTPUT.tif [options]
+```
+
+In a terminal you get a live progress bar (stages, tile count, elapsed time and ETA), then a summary table:
+
+```text
+                    synapse-sr result
+model          synapse-pro-v2
+output         640 × 640 px · 2 m · bands B04 B03 B02 B08
+backend        pytorch · bfloat16 · tile 32 halo 16
+consistency    B04 0.91τ  B03 0.80τ  B02 0.68τ  B08 0.99τ
+support        HIGH 22%  MEDIUM 48%  LOW 29%
+invalid input  0.0%
+time           80.3 s
+done wrote OUTPUT.tif
+```
+
+## Common tasks
+
+| Task | Command |
+|---|---|
+| Default (Pro, best available device) | `synapse-sr scene.tif scene_2m.tif` |
+| Fast model on a CPU | `synapse-sr scene.tif scene_2m.tif --model flash --device cpu` |
+| Offline, local weights | `synapse-sr scene.tif scene_2m.tif --weights synapse-pro-v2.safetensors` |
+| Explicit cloud mask | `synapse-sr scene.tif scene_2m.tif --scl scene_SCL_20m.tif` |
+| No cloud masking | `synapse-sr scene.tif scene_2m.tif --scl none` |
+| Raw DN from baseline ≥ 04.00 without a tag | `synapse-sr scene.tif scene_2m.tif --offset -1000` |
+| Four bands only (for a GIS) | `synapse-sr scene.tif scene_2m.tif --no-confidence` |
+| Low GPU memory | `synapse-sr scene.tif scene_2m.tif --batch 2` |
+| Scripts and pipelines | `synapse-sr scene.tif scene_2m.tif --json` (one JSON line on stdout, no bars) |
+| Diagnose the machine | `synapse-sr --env` |
+| What models exist | `synapse-sr --models` |
+
+## All options
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--model` | `pro` | `pro`, `flash`, or a registered name such as `pro-v1` |
+| `--weights` | | local `.safetensors` checkpoint; no network access needed |
+| `--device` | CUDA if available | `cuda`, `cuda:1`, `cpu`, `mps` |
+| `--scl` | `auto` | scene classification raster; `auto` uses `<input>_scl.tif` when it exists; `none` disables |
+| `--offset` | tag or 0 | DN offset added before dividing by 10 000 |
+| `--tile` | 64 GPU scan / 32 PyTorch / 128 Flash | tile size in 10 m pixels |
+| `--halo` | 16 | context around each tile, in 10 m pixels |
+| `--batch` | 8 CUDA / 1 CPU | tiles per forward pass |
+| `--no-confidence` | | write B04 B03 B02 B08 only |
+| `--json` | | machine-readable summary on stdout |
+| `--quiet` | | no progress bar or summary |
+| `--env`, `--models`, `--version` | | print and exit (`--env --json` for JSON) |
+
+## Output file
+
+| Bands | Content |
+|---|---|
+| 1-4 | B04 B03 B02 B08 surface reflectance, float32, NaN where the input was invalid |
+| 5-8 | `ERRSCALE_*`: learned per-pixel error scale for each band |
+| 9 | `SUPPORT`: 2 observation-determined, 1 medium, 0 prior-dominated or invalid |
+
+Same CRS and bounds as the input, with a 2 m pixel.
+
+## Exit codes
+
+`0` success. Any error (unreadable file, unsupported grid, missing weights) exits non-zero with a message that
+says what to change; see [Troubleshooting](../troubleshooting.md).
+
+
+---
+
+<!-- guide/verify.md -->
+
+# Verify it yourself
+
+You should not have to take anything in these docs on trust. Each claim below comes with a few lines of code you
+can run on your own scene. All of them were run on the RV University scene from the [Quick start](../quickstart.md)
+before being published here.
+
+```python
+import numpy as np, torch, synapse_sr
+from synapse_sr import Pro
+
+model = Pro.from_pretrained()
+scene = synapse_sr.fetch_sentinel2(lat=12.9237, lon=77.4987, start="2025-01-01", end="2025-03-15", size_m=1280)
+r = model.super_resolve(scene)
+```
+
+## 1. The output is where the input was
+
+The output GeoTIFF must have the same CRS and the same bounds, with pixels exactly 5x smaller.
+
+```python
+import rasterio
+
+r.save("out_2m.tif")
+with rasterio.open(scene) as a, rasterio.open("out_2m.tif") as b:
+    assert a.crs == b.crs
+    assert np.allclose(a.bounds, b.bounds)
+    assert b.res == (a.res[0] / 5, a.res[1] / 5)
+    print(a.bounds, b.bounds, a.res, b.res)
+```
+
+Open both files in QGIS as well: roads and field edges line up, with no offset.
+
+## 2. Re-observing the output reproduces the measurement
+
+`r.consistency` reports `RMS(A(image) - y) / tau` per band, where `A` is the Sentinel-2 forward model (the
+instrument's point-spread function, then sampling at 10 m) and `tau` is the band's noise level. You can
+recompute it from scratch:
+
+```python
+from synapse_sr.io import geotiff
+from synapse_sr.io.sentinel2 import select_bands, to_reflectance
+from synapse_sr.models import baseline
+
+arr, profile, names, tags = geotiff.read(scene)
+y = torch.tensor(to_reflectance(select_bands(arr, names), offset=float(tags.get("BOA_ADD_OFFSET", 0))))[None, :4]
+x = torch.tensor(r.image)[None]
+A = model.op.cpu()
+(o, q), (o2, q2) = A.block(x.shape[-2]), A.block(x.shape[-1])
+resid = A(x) - y[..., o:o + q, o2:o2 + q2]
+print((resid.pow(2).mean((0, 2, 3)).sqrt() / baseline.tau_for(A)).tolist())   # a few noise units (default fit: 4)
+```
+
+A few noise units means the output agrees with the satellite measurement to within noise plus modelling error (the
+default fit is 4 units; `discrepancy=1` fits to sensor noise alone). A generic
+upsampler or GAN has no such constraint. Run the same check on `bicubic = torch.nn.functional.interpolate(y, scale_factor=5, mode="bicubic")`
+to compare.
+
+Your numbers can differ slightly from `r.consistency`, which is measured per tile on the tiled mosaic. They are
+of the same size.
+
+## 3. The network cannot change what the satellite saw
+
+The learned detail (`r.prior`) lies in the null space of `A`, so it is invisible to the sensor:
+
+```python
+xb = torch.tensor(r.x_base)[None]
+d = A(x) - A(xb)
+print(float(d.abs().max()), float(A(xb).abs().max()))   # e.g. 0.00035 vs 1.22: a few parts in 10,000
+```
+
+This holds tile by tile. The difference comes from floating-point error and tile seams, not from the model.
+
+## 4. Where the detail comes from
+
+```python
+r.show(["image", "x_base", "prior", "support"])
+print(r.summary(print_=False)["support_fraction"])      # {'high': ..., 'medium': ..., 'low': ...}
+```
+
+- `x_base` depends only on the measurement: there is no network in it.
+- `prior` is everything the network added.
+- `support` says, pixel by pixel, which of the two dominates.
+
+For decisions, use only pixels with `r.support == 2`, or weight them by `r.uncertainty()`.
+
+## 5. Accuracy against your own high-resolution reference
+
+If you have a reference image of the same area and date (drone, aerial, or commercial imagery), co-register it
+and resample it to the 2 m output grid first (`gdalwarp -tr 2 2 -r average -te <output bounds>`). Then:
+
+```python
+with rasterio.open("reference_2m.tif") as f:
+    ref = f.read([1, 2, 3, 4]).astype("float32") / 10000     # same bands and units: B04 B03 B02 B08 reflectance
+
+def rmse(a, b, m):
+    return float(np.sqrt(np.nanmean((a[:, m] - b[:, m]) ** 2)))
+
+valid = r.valid & np.isfinite(ref).all(0)
+bic = torch.nn.functional.interpolate(y, scale_factor=5, mode="bicubic")[0].numpy()
+for name, img in [("bicubic", bic), ("x_base", r.x_base), ("synapse-sr", r.image)]:
+    print(f"{name:11s} RMSE {rmse(img, ref, valid):.4f}  on HIGH-support pixels {rmse(img, ref, valid & (r.support == 2)):.4f}")
+```
+
+Also check that the uncertainty is honest. About 90 % of pixels should fall inside the 90 % interval:
+
+```python
+half = r.interval(0.9)
+inside = np.abs(r.image - ref) <= half
+print("coverage at 90 %:", float(inside[:, valid].mean()))
+```
+
+The shipped calibration was fitted against 2 m references derived from US aerial imagery. If coverage on your
+region is clearly below the nominal level, treat the intervals as optimistic there.
+
+!!! warning "Reference data pitfalls"
+    Differences in acquisition date, viewing angle, sensor spectral response and co-registration all show up as
+    "error". Use a reference acquired within days of the Sentinel-2 image, match the bands spectrally, and
+    register it to sub-pixel accuracy before judging any super-resolution model.
+
+## 6. Same numbers on every machine
+
+The CPU, CUDA, Triton and mamba-ssm paths compute the same model. Compare them yourself:
+
+```python
+cpu = Pro.from_pretrained(device="cpu").super_resolve(scene, progress=False).image
+gpu = Pro.from_pretrained(device="cuda").super_resolve(scene, progress=False, tile=32).image
+print(np.abs(cpu - gpu).max())      # small: bfloat16 rounding on the GPU, identical physics
+```
+
+Use the same `tile` on both, because the tile size changes the context each tile sees.
+
+## 7. The weights are the published ones
+
+Every download is checked against the SHA-256 in the package's registry, on every load. To check by hand:
+
+```python
+from synapse_sr.pretrained import download, registry
+m = registry.manifest("pro-v2")
+print(download.sha256(download.cache_dir() / m["file"]) == m["sha256"])
+```
+
+## 8. Run the test suite
+
+```bash
+git clone https://github.com/SharadhNaidu/synapse-sr && cd synapse-sr
+pip install -e ".[test]"
+pytest -q
+```
+
+The suite needs no weights or network. It checks each fast path against the exact reference it replaces:
+
+- the forward operator against its 0.5 m fine-grid form;
+- the scan against a float64 sequential recurrence, including extreme decay rates, and its gradients;
+- the preconditioned solvers against plain conjugate gradients;
+- Triton against the PyTorch scan (on CUDA);
+- the Flash re-parameterisation against its training form.
+
+It also checks georeferencing, tiling seams, input formats, masking, the null-space property, the CLI and the
+application helpers.
+
+
+---
+
+<!-- applications.md -->
+
+# Applications
+
+synapse-sr is built for the uses named in the SIH problem statement: crop monitoring, urban analysis, water
+mapping and disaster assessment. Each needs detail finer than 10 m and an honest statement of how far that detail
+can be trusted. Every example below works on any `Result`.
+
+## Crop monitoring
+
+```python
+import synapse_sr
+
+r = synapse_sr.super_resolve("fields.tif")
+idx = r.indices()
+ndvi, savi, evi, ndre = idx["ndvi"], idx["savi"], idx["evi"], idx["ndre"]   # NDRE uses the 20 m red edge
+
+fields = synapse_sr.boundaries(r, "field")        # 0..1 parcel-boundary strength at 2 m
+trusted = r.support == 2                          # observation-determined pixels
+print("mean NDVI on trusted pixels:", float(ndvi[trusted].mean()))
+```
+
+On the development split (128 GeoSR pairs with a 2 m NAIP-derived reference), the NDVI edge F1 (field
+boundaries) is 0.599 for SYNAPSE Pro v2 (Pro v1: 0.597). The comparison figures are SEN2SR 0.548, LDSR-S2 0.570 and bicubic
+0.477. An independent held-out evaluation is pending.
+
+## Urban analysis
+
+```python
+import synapse_sr
+
+r = synapse_sr.super_resolve("city.tif")
+edges = synapse_sr.boundaries(r, "urban")         # buildings, roads
+built = r.indices()["ndbi"]                       # built-up index (20 m SWIR context)
+```
+
+The urban benchmark covers 12 Indian cities (Google Open Buildings v3), with the same classifier for every product
+and leave-one-city-out evaluation. The table gives the fraction of individual buildings detected (measured with Pro v1):
+
+| Building size | Sentinel-2 10 m | Bicubic | SEN2SR | LDSR-S2 | Satlas | SYNAPSE Pro v1 |
+|---|---|---|---|---|---|---|
+| < 40 m² | 0.556 | 0.581 | 0.599 | 0.620 | **0.636** | 0.635 |
+| 40–100 m² | 0.677 | 0.725 | 0.709 | 0.740 | 0.715 | **0.766** |
+| 100–400 m² | 0.812 | 0.855 | 0.831 | 0.867 | 0.783 | **0.894** |
+| > 400 m² | 0.932 | 0.961 | 0.952 | 0.960 | 0.841 | **0.970** |
+
+Exact 2 m footprint outlines remain beyond every product. Pixel IoU is 0.35–0.37 for all of them, including native
+10 m (Satlas 0.28).
+
+## Water and flood mapping
+
+```python
+import synapse_sr
+r = synapse_sr.super_resolve("scene.tif")
+
+water = r.indices()["ndwi"] > 0                   # 2 m water mask
+shore = synapse_sr.boundaries(r, "water")         # shoreline / flood-front strength
+```
+
+## Disaster and change assessment
+
+```python
+import synapse_sr
+
+before = synapse_sr.super_resolve("before.tif")
+after = synapse_sr.super_resolve("after.tif")
+
+flood = synapse_sr.change(before, after, "ndwi")          # water advance
+burn = synapse_sr.change(before, after, "nbr")            # burn scar (20 m SWIR context)
+damage = synapse_sr.change(before, after, "brightness")   # debris, collapse, bare soil
+print(damage.area_km2, "km2 changed;", damage.unreliable_fraction, "of pixels excluded as unreliable")
+```
+
+`change` only flags pixels that are valid and observation-supported on both dates, so detected change rests on
+measured evidence.
+
+In a known-truth benchmark (collapsed structures, debris strips, flood advance), every product was held at the same
+0.5 % false-alarm rate on unchanged ground. SYNAPSE had the best F1: 0.331, against 0.319 for SEN2SR and 0.303
+for native 10 m. That lead comes from precision, not stability: SYNAPSE varies slightly more than SEN2SR between
+two looks at unchanged ground. LDSR-S2 and Satlas ESRGAN vary much more, so they need a higher threshold and
+miss events. LDSR-S2 missed 25 % of debris events. Satlas ESRGAN detected no collapses and
+a quarter of the floods.
+
+## Available indices
+
+| Index | Formula | Bands | Use |
+|---|---|---|---|
+| NDVI | (N − R) / (N + R) | 2 m | vegetation, crop vigour |
+| SAVI | 1.5 (N − R) / (N + R + 0.5) | 2 m | sparse vegetation |
+| EVI | 2.5 (N − R) / (N + 6R − 7.5B + 1) | 2 m | dense canopy |
+| GNDVI | (N − G) / (N + G) | 2 m | chlorophyll |
+| NDWI | (G − N) / (G + N) | 2 m | open water |
+| NDRE | (N − B05) / (N + B05) | 2 m × 20 m | crop stress, nitrogen |
+| NDBI | (B11 − N) / (B11 + N) | 20 m context | built-up |
+| NBR | (N − B12) / (N + B12) | 20 m context | burn severity |
+| MNDWI | (G − B11) / (G + B11) | 20 m context | water, flood |
+
+Indices that use a 20 m context band inherit that band's 20 m spatial detail.
+
+
+---
+
+<!-- examples.md -->
+
+# Examples
+
+Every image and recipe on this page was produced with the package itself. The recipes are self-contained: copy
+one, change the file names, and run it.
+
+## Gallery
+
+Scenes fetched with `fetch_sentinel2` and processed with Pro v2 (`tools/make_gifs.py`). Left: the Sentinel-2 L2A
+10 m input with nearest-neighbour pixels and no smoothing. Right: the synapse-sr 2 m output. Both use the same
+true-colour stretch, and each area is 1.28 km x 1.28 km. The percentages give the share of pixels in each support
+class (observation-determined / medium / prior-dominated).
+
+| | |
+|---|---|
+| **RV University, Bengaluru** · 6 Feb 2025 · 22 / 48 / 30 % <br><img src="../assets/gifs/rv_university.gif" alt="RV University" width="400"> | **Bengaluru city centre** · 6 Feb 2025 · 33 / 46 / 21 % <br><img src="../assets/gifs/bengaluru_urban.gif" alt="Bengaluru" width="400"> |
+| **Ludhiana, Punjab: fields** · 2 Dec 2024 · 40 / 47 / 14 % <br><img src="../assets/gifs/punjab_fields.gif" alt="Ludhiana" width="400"> | **Wayanad, Kerala: landslide area** · 24 Feb 2025 · 88 / 10 / 1 % <br><img src="../assets/gifs/wayanad_landslide.gif" alt="Wayanad" width="400"> |
+
+Reproduce: `pip install "synapse-sr[stac]" pillow`, then `python tools/make_gifs.py --weights synapse-pro-v2.safetensors --out gifs`.
+
+## Recipes
+
+### Process a whole folder
+
+```python
+import synapse_sr
+
+import pathlib
+from synapse_sr import Pro
+
+model = Pro.from_pretrained()                        # load once, reuse for every file
+out = pathlib.Path("out_2m"); out.mkdir(exist_ok=True)
+for tif in sorted(pathlib.Path("scenes").glob("*.tif")):
+    if tif.stem.endswith("_scl"):
+        continue                                     # cloud masks next to scenes are picked up automatically
+    r = model.super_resolve(tif)
+    r.save(out / tif.name)
+    print(tif.name, r.summary(print_=False)["consistency_rms_over_tau"])
+```
+
+Or from the shell: `for f in scenes/*.tif; do synapse-sr "$f" "out_2m/$(basename "$f")"; done`.
+
+### Only an area of interest from a big scene
+
+Crop at 10 m first. Every 10 m pixel you skip saves 25 output pixels of work. Writing the crop as a small
+GeoTIFF keeps its coordinates, so the result is georeferenced too.
+
+```python
+import rasterio
+from rasterio.windows import Window
+from synapse_sr import Pro
+
+win = Window(col_off=0, row_off=0, width=64, height=64)          # 640 m x 640 m, in 10 m pixels
+with rasterio.open("T43PGQ_full_scene.tif") as src:
+    profile = dict(src.profile, width=win.width, height=win.height, transform=src.window_transform(win))
+    with rasterio.open("aoi.tif", "w", **profile) as dst:
+        dst.write(src.read(window=win))
+        dst.descriptions = src.descriptions
+        dst.update_tags(**src.tags())                           # keeps BOA_ADD_OFFSET
+
+r = Pro.from_pretrained().super_resolve("aoi.tif")
+r.save("aoi_2m.tif")
+```
+
+To select by map coordinates instead, build the window with
+`rasterio.windows.from_bounds(xmin, ymin, xmax, ymax, src.transform)` in the scene's CRS.
+
+### A laptop without a GPU
+
+```python
+import synapse_sr
+
+from synapse_sr import Flash, Pro
+
+model = Flash.from_pretrained(device="cpu")          # ~1 s per 1.28 km scene on a laptop CPU
+# model = Pro.from_pretrained(device="cpu")          # works everywhere; slower on CPU
+r = model.super_resolve("scene.tif", batch=1)
+```
+
+Inside Docker or Kubernetes, set `OMP_NUM_THREADS` to the number of cores you actually have.
+
+### Google Earth Engine export
+
+Export the ten bands the model uses, at 10 m, with names, as surface reflectance DN:
+
+```javascript
+var img = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
+  .filterBounds(aoi).filterDate("2025-01-01", "2025-03-15")
+  .sort("CLOUDY_PIXEL_PERCENTAGE").first()
+  .select(["B4", "B3", "B2", "B8", "B5", "B6", "B7", "B8A", "B11", "B12"]);
+Export.image.toDrive({image: img.toUint16(), region: aoi, scale: 10, crs: img.select("B4").projection().crs(),
+                      fileFormat: "GeoTIFF", description: "s2_for_synapse"});
+```
+
+```python
+from synapse_sr import Pro
+
+r = Pro.from_pretrained().super_resolve("s2_for_synapse.tif",
+                                        band_names=["B04", "B03", "B02", "B08", "B05", "B06", "B07", "B8A", "B11", "B12"],
+                                        offset=0)          # the HARMONIZED collection already removed the offset
+```
+
+`S2_SR_HARMONIZED` has the processing-baseline 04.00 offset removed, so pass `offset=0`. Raw `S2_SR` scenes after
+25 January 2022 need `offset=-1000`.
+
+### xarray, stackstac and cubo
+
+```python
+import synapse_sr
+
+import cubo                                          # pip install cubo
+from synapse_sr import Pro
+da = cubo.create(lat=12.92, lon=77.50, collection="sentinel-2-l2a",
+                 bands=["B04", "B03", "B02", "B08", "B05", "B06", "B07", "B8A", "B11", "B12"],
+                 start_date="2025-02-01", end_date="2025-02-10", edge_size=128, resolution=10)
+r = Pro.from_pretrained().super_resolve(da.isel(time=0))
+out = r.to_xarray()                                  # (band, y, x) with 2 m coordinates
+```
+
+### An NDVI time series on trusted pixels
+
+```python
+import numpy as np, synapse_sr
+from synapse_sr import Pro
+
+model = Pro.from_pretrained()
+months = [("2024-11-01", "2024-11-30"), ("2024-12-01", "2024-12-31"), ("2025-01-01", "2025-01-31")]
+for start, end in months:
+    r = model.super_resolve(synapse_sr.fetch_sentinel2(30.935, 75.800, start, end, size_m=1280))
+    ndvi = r.indices()["ndvi"]
+    print(start, "mean NDVI:", round(float(np.nanmean(ndvi[r.support == 2])), 3))
+```
+
+Restricting statistics to `support == 2` keeps prior-dominated pixels out of the numbers.
+
+### Per-field statistics with polygons
+
+```python
+import synapse_sr
+
+import geopandas as gpd, numpy as np, rasterio.features
+from synapse_sr import Pro
+
+r = Pro.from_pretrained().super_resolve("fields.tif")
+fields = gpd.read_file("parcels.gpkg").to_crs(r.profile["crs"])
+t = r.profile["transform"]
+t2 = t * t.scale(1 / 5)                              # the 2 m output grid
+ids = rasterio.features.rasterize(zip(fields.geometry, range(1, len(fields) + 1)), out_shape=r.image.shape[1:],
+                                  transform=t2)
+ndvi, err = r.ndvi(), r.uncertainty()[3]
+for i, row in enumerate(fields.itertuples(), 1):
+    m = (ids == i) & r.valid
+    print(row.Index, "NDVI", round(float(np.nanmean(ndvi[m])), 3), "± NIR error", round(float(err[m].mean()), 4))
+```
+
+### Flood extent between two dates
+
+```python
+import synapse_sr
+from synapse_sr import Pro
+
+model = Pro.from_pretrained()
+kw = dict(lat=9.60, lon=76.40, size_m=2000)                  # Kuttanad, Kerala
+before = model.super_resolve(synapse_sr.fetch_sentinel2(start="2024-03-01", end="2024-04-30", **kw))
+try:
+    after_scene = synapse_sr.fetch_sentinel2(start="2024-08-01", end="2024-09-30", max_cloud=60, **kw)
+except LookupError as e:                                     # no scene under the cloud limit in that window
+    raise SystemExit(f"{e}: widen the dates or raise max_cloud")
+after = model.super_resolve(after_scene)
+flood = synapse_sr.change(before, after, "ndwi")
+print(f"new water: {flood.area_km2:.2f} km2, could not assess: {100 * flood.unreliable_fraction:.0f} %")
+```
+
+- **Clouds in the monsoon.** Clear scenes are rare during the monsoon. The default `max_cloud=20` (percent of
+  the whole tile) found no scene for August to September 2024 here. Raising it is safe, because cloudy pixels are
+  still masked one by one from the scene classification layer. They count towards `unreliable_fraction`, not
+  towards the flooded area.
+- **Same grid.** Both dates must come out on the same grid. `fetch_sentinel2` gives that for a fixed point and
+  `size_m`, as long as both scenes come from the same Sentinel-2 tile.
+
+### Use the output in QGIS
+
+```python
+import synapse_sr
+r = synapse_sr.super_resolve("scene.tif")
+
+r.save("scene_2m.tif")                               # bands 1-4: B04 B03 B02 B08; 5-8: ERRSCALE; 9: SUPPORT
+```
+
+In QGIS, set *Multiband colour* to red = band 1, green = band 2, blue = band 3. Add the file again with band 9 as
+*Paletted / unique values* to see the support classes. Use `with_confidence=False` if your GIS expects exactly four
+bands.
+
+### Show a progress bar inside your own application
+
+```python
+from synapse_sr import Pro
+model = Pro.from_pretrained()
+
+def on_tile(done, total):
+    my_progress_widget.set(done / total)
+
+r = model.super_resolve("scene.tif", progress=on_tile)
+```
+
+`progress=False` silences it; `SYNAPSE_SR_QUIET=1` silences it everywhere.
+
+
+---
+
+<!-- method.md -->
+
+# How it works
+
+```
+x_hat = x_base + P_N(delta)
+```
+
+| Component | Role |
+|---|---|
+| `A` | Sentinel-2 forward operator: per-band point-spread function on a 0.5 m grid, sampled at source-pixel centres |
+| `x_base` | deterministic baseline: bicubic anchor corrected by Tikhonov regularisation. One regularisation weight is shared by all four bands (so every band is sharpened equally) and set by the Morozov discrepancy principle for a total noise of 4x the L2A sensor noise, which absorbs forward-model error (point-spread function, registration). `super_resolve(discrepancy=1)` fits to sensor noise alone |
+| `delta` | structural correction predicted by the network |
+| `P_N` | projector onto the null space of `A`, `I - A^T (A A^T)^+ A`: removes every component the sensor could have observed |
+
+Because `A P_N = 0`, re-observing `x_hat` gives exactly what re-observing `x_base` gives, whatever the network
+predicts. The network can add detail below the sensor's resolving power. It cannot contradict the
+measurement.
+
+## Network
+
+`SynapseProX5`, 14.4 M parameters:
+
+- **State-space backbone**: 6 residual groups of 8 visual state-space blocks, with four-direction scanning so
+  that no orientation is preferred, followed by channel attention.
+- **Two stems**: an RGBN spatial stem, plus a gated stem for the six 20 m bands. The gate starts closed, so the
+  20 m context is used only as far as training finds it useful.
+- **Frequency mixer**: splits features into a local low band and its high-frequency complement, mixes each,
+  and re-fuses them.
+- **Direct x5 head**: PixelShuffle x5 with ICNR initialisation, so all 25 sub-pixel phases start identical and
+  no 10 m cell pattern is imprinted.
+- **Two outputs**: `delta` (2 m, RGBN) and a confidence map computed from detached features, so the confidence
+  loss cannot steer the reconstruction.
+
+## Geometry
+
+x5 is odd. Output pixel `5i + r` spans `[10i + 2r, 10i + 2r + 2]` m inside source pixel `i`, and `r = 2` is
+centred on the source-pixel centre. The output grid therefore shares the input origin exactly.
+
+## Training (summary)
+
+The network was trained on Sentinel-2 L2A paired with 0.6 m aerial reference imagery. The reference was
+registered to Sentinel-2, integrated onto the 2 m grid, and gain-matched per band to Sentinel-2 through the
+forward operator. Every loss term acts only on the null-space component `P_N(x_hat - target)`. The model is
+therefore never trained to reproduce cross-sensor radiometric differences that the Sentinel-2 measurement
+already determines. The backbone was initialised from public CC0 weights; see
+[Acknowledgements](changelog.md#acknowledgements).
+
+
+---
+
+<!-- faq.md -->
+
+# FAQ
+
+### Is the 2 m output "real" 2 m detail?
+
+Partly, and synapse-sr tells you which part. A 10 m pixel cannot uniquely determine the 25 pixels of 2 m inside
+it. The output therefore has two components:
+
+- `x_base` is fixed by the measurement;
+- `prior` is inferred by the network and is invisible to the sensor.
+
+`support` labels each pixel by which component dominates, and `uncertainty()` gives a calibrated expected error.
+The output grid is 2 m. How much of the detail in any pixel is resolved from the measurement rather than inferred
+is reported per pixel by `support` and `uncertainty()`.
+
+### How is this different from bicubic, other super-resolution models or a GAN?
+
+Bicubic adds no information. Other learned models, including GAN-based methods, add plausible detail but do
+not tell you where it came from, and most can alter what the satellite measured. synapse-sr constrains the
+network so that re-observing the output reproduces the measurement (`consistency ≈ 1` noise unit). It also returns
+the observed / inferred split with every result. You can check all of this yourself:
+[Verify it yourself](guide/verify.md).
+
+### Which bands come out at 2 m?
+
+B04, B03, B02 and B08 (red, green, blue, near-infrared). The six 20 m bands (B05, B06, B07, B8A, B11 and B12)
+help the network as spectral context. They are available on the output grid via `r.band("B11")` and in the
+red-edge and SWIR indices, but they are **not** super-resolved.
+
+### Pro or Flash?
+
+Flash (the default) runs anywhere, about 1 s per 1.28 km scene even on a laptop CPU. Pro adds the most detail and is best on a GPU (Colab, Kaggle, a workstation): `super_resolve(src, model="pro")`.
+The physics guarantees are identical. See [Choosing a model and a device](guide/models.md).
+
+### How long does it take?
+
+Measured on a 1.28 km x 1.28 km scene (128 x 128 input pixels, 640 x 640 output):
+
+| Hardware | Pro |
+|---|---|
+| A100 slice, Triton kernel | 5.2 s (first call 22 s, including the one-time compile and weight download) |
+| Laptop RTX 4070, Windows, PyTorch scan | 80 s |
+| Flash, laptop CPU (Intel i9) | about 1 s; a 10 km x 10 km scene in 14 s |
+
+Time grows with area: a 10 km x 10 km scene has about 61x as many pixels.
+
+### Does it need the internet?
+
+Only to download the weights once (~58 MB, SHA-256 checked) and, if you use it, for `fetch_sentinel2`. After that
+everything runs offline, or from a local file with `from_pretrained(weights=...)`. See
+[Offline use](guide/offline.md).
+
+### What input do I need?
+
+A Sentinel-2 **L2A** (surface reflectance) scene on the 10 m grid that contains the 10 model bands, as a GeoTIFF,
+a numpy or torch array, or xarray. DN or reflectance are both fine, and band order is detected from names. L1C
+top-of-atmosphere data is accepted as input, but the model was trained on L2A. See
+[Inputs](guide/inputs.md).
+
+### Why are some pixels NaN or red in the support map?
+
+NaN means the input was invalid there (NoData, cloud, cloud shadow, cirrus or saturation, from the SCL layer).
+Red, or support 0, means the prior dominates, which is often the case at sharp edges and along the scene border,
+where tiles have no context on one side. Use `support == 2` for decisions that must rest on the measurement.
+
+### My result looks darker or brighter than expected.
+
+This is almost always a radiometric offset problem. Products of processing baseline 04.00 and later store DN
+with +1000. synapse-sr reads the `BOA_ADD_OFFSET` tag. If your file lacks it, pass `offset=-1000` for raw DN, or
+`offset=0` for data where the offset was already removed (for example GEE `S2_SR_HARMONIZED` and Earth Search).
+See also [Troubleshooting](troubleshooting.md).
+
+### Can I use it commercially? How do I cite it?
+
+The package is CC0-1.0. Third-party components and their licences are listed in `THIRD_PARTY_NOTICES`. The citation is in the
+README.
+
+
+---
+
+<!-- troubleshooting.md -->
+
+# Troubleshooting
+
+Start with the environment report:
+
+```bash
+synapse-sr --env
+```
+
+| Message | Cause | Fix |
+|---|---|---|
+| `pretrained weights for 'pro-v2' are not published yet` | registry entry without a download URL | pass `weights="path/to/model.safetensors"` |
+| `checksum mismatch for ...` | incomplete or modified download | delete the file named in the message and retry |
+| `cannot map N channels to Sentinel-2 bands` | unknown band layout | pass `band_names=[...]` or write band descriptions into the GeoTIFF |
+| `expected the Sentinel-2 10 m grid, got 20.0 m pixels` | input not on the 10 m grid | resample to 10 m first (`gdalwarp -tr 10 10 -r near`) |
+| `rotated or sheared geotransforms are not supported` | non north-up raster | `gdalwarp` to a north-up grid |
+| `select one 'time' first` | multi-date xarray cube | pass `cube.isel(time=k)` |
+| `mamba-ssm selective_scan_cuda is installed but unusable` (warning) | kernel built for another PyTorch or CUDA | reinstall `mamba-ssm` with `--no-build-isolation`; results are unaffected, only slower |
+| `CUDA out of memory` | tile too large for the GPU | lower `tile` (for example `tile=32`) |
+| `GeoTIFF IO needs rasterio` | rasterio missing | `pip install rasterio` (conda-forge on Windows if pip fails) |
+| output much darker or brighter than expected | offset mismatch | check the product's processing baseline; pass `offset=-1000` or `offset=0` |
+| scenes from `fetch_sentinel2` in v0.2.0 look too dark, NDVI near 1 everywhere | v0.2.0 applied the baseline 04.00 offset to Earth Search data that already had it removed | upgrade to 0.3.0, re-download the scene (the `BOA_ADD_OFFSET` tag is now correct) |
+| CPU run far slower than expected inside Docker / Kubernetes | PyTorch starts one thread per host core, not per allowed core | `OMP_NUM_THREADS=<cores you have>` or `torch.set_num_threads(n)` |
+| first GPU scene slow on Colab / Kaggle, later ones fast | Triton compiles its kernel once per session | expected; nothing to do |
+| GPU memory full, or very slow on Windows laptops | too many tiles per batch for the GPU | `batch=2` (or `--batch 2`); on Windows, exhausted GPU memory spills into system RAM instead of failing |
+| odd symbols in the progress bar or summary | console without UTF-8 | harmless; synapse-sr falls back to ASCII; `set PYTHONUTF8=1` on Windows for the full symbols |
+| no progress bar | output is piped, logged or run under a test runner | pass `progress=True` to force it, or `SYNAPSE_SR_QUIET=1` to silence it everywhere |
+
+Still stuck? Open an issue at
+[github.com/SharadhNaidu/synapse-sr/issues](https://github.com/SharadhNaidu/synapse-sr/issues) and include
+the `synapse-sr --env` output.
+
+
+---
+
+<!-- changelog.md -->
+
+# Changelog
+
+All notable changes to this project are documented here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
+[Semantic Versioning](https://semver.org/).
+
+## [0.3.0] - 2026-09-24
+
+### Added
+
+- **SYNAPSE Flash** (`synapse_sr.Flash`, `--model flash`): a re-parameterised SPAN-style CNN on the same
+  observation-consistent pipeline, for CPUs, laptops, integrated graphics, Apple silicon and ARM. Weights are not
+  released yet; `Pro.from_pretrained(weights=...)` recognises Flash checkpoints automatically.
+- **Triton selective-scan kernel**: Pro runs its Mamba layers at GPU speed on Colab, Kaggle and any CUDA machine
+  with Triton, with no `mamba-ssm` build. It is self-tested against the exact scan once per process.
+- **Live feedback** (Rich): progress bar with stages and tile counts, download bar, one-line result summary;
+  automatic in terminals and notebooks, silent when piped (`progress=`, `SYNAPSE_SR_QUIET=1`).
+- `Result.summary()`, `Result.show()` (matplotlib panels: image, x_base, prior, support, uncertainty, NDVI) and a
+  concise `repr`.
+- CLI: `--models`, `--json`, `--batch`, `--quiet`; `--env` shows CPU threads, MPS, and the scan backend Pro will use.
+- Quick-start notebook for Colab and Kaggle; new guides: *Colab and Kaggle*, *Choosing a model and a device*.
+- Tests for every fast path against its exact reference (operator, scan at extreme decay rates, preconditioned
+  solvers, Triton, Flash re-parameterisation and checkpoint dispatch).
+
+### Changed
+
+- **Pro is 3-4x faster with unchanged outputs.**
+  - The Sentinel-2 forward operator is evaluated as one strided convolution on the 2 m grid. This is
+    algebraically identical to the 0.5 m fine-grid form and about 100x faster.
+  - The physics solves (lambda calibration, Tikhonov baseline, null-space projection) use conjugate gradients
+    preconditioned with the operator's closed-form periodic inverse. The answers are the same and fewer iterations
+    are needed.
+  - The PyTorch scan is rewritten as elementwise operations plus a cumulative sum in float32: no chunk matrices, and
+    memory bounded at any batch size.
+  - Equal-size tiles and calibration windows are batched.
+  - End-to-end check against 0.2.0 on a real scene: x_base within 3e-5, the image within bf16 rounding (0.002).
+- The CLI prints a summary table; JSON output is now behind `--json`.
+- `rich` is a dependency.
+
+### Fixed
+
+- `fetch_sentinel2` applied the processing-baseline 04.00 offset to Earth Search scenes that already had it removed
+  (`earthsearch:boa_offset_applied`). Scenes came out 0.1 reflectance too dark and dark surfaces went negative.
+  Re-download scenes fetched with 0.2.0.
+- Normalised-difference indices are NaN where both bands are essentially dark and are clipped to [-1, 1]; EVI is
+  clipped to [-1, 1]; negative L2A reflectance counts as zero. `change()` excludes pixels whose index is undefined.
+- Windows consoles without UTF-8 get ASCII symbols instead of garbled characters.
+
+### Corrected claim
+
+- The effective-resolution statement made in 0.2.0 is withdrawn. No effective-resolution figure is claimed.
+
+## [0.2.0] - 2026-09-23
+
+### Added
+
+- Application layer: `Result.indices()` (NDVI, SAVI, EVI, GNDVI, NDWI; with 20 m context NDRE, NDBI, NBR, MNDWI),
+  `Result.band()`, 20 m context bands on the output grid (`context=True`, labelled not super-resolved),
+  `synapse_sr.change()` (support-aware change detection) and `synapse_sr.boundaries()` (field, water, urban).
+- Calibrated uncertainty: `Result.uncertainty()` and `Result.interval(level)` from a checkpoint-shipped error model
+  with split-conformal coverage (Pro v1: 82 / 91 / 96 % at 80 / 90 / 95 %).
+- Local checkpoints matching a registered model (by SHA-256) receive that model's calibration.
+- Documentation: Applications page; calibrated-uncertainty guide.
+
+### Changed
+
+- **Default model is now SYNAPSE Pro v2** (`pro-v2`, 5000 training steps): best field / urban / water edge F1 on the development benchmark, calibrated uncertainty shipped.
+  Known limitation: low-contrast wide strips (about 24 m) can be split by a false gap. `pro-v1` remains available.
+- The CLI `--model` default follows the registry default.
+- The 20 m context stem is zero-initialised without a scalar gate; Pro v1 checkpoints load unchanged (gate folded).
+- The frequency mixer pads in float32.
+- `scipy` is now a dependency.
+
+## [0.1.0] - 2026-09-23
+
+### Added
+
+- `Pro` model interface: `from_pretrained`, `super_resolve`, `save_pretrained`, `to`.
+- `synapse_sr.super_resolve` one-call function with a cached default model.
+- Inputs: GeoTIFF paths, numpy arrays, torch tensors and xarray DataArrays; DN or reflectance; automatic band
+  mapping (10-, 12- and 13-band layouts or band names) and `BOA_ADD_OFFSET` handling.
+- Preprocessing: NoData, NaN and Sentinel-2 SCL masking (automatic `<input>_scl.tif` pick-up), grid validation,
+  seamless tiling with context halo for any scene size.
+- `Result` with reflectance, error scale, support classes, validity mask, round-trip consistency, observed /
+  inferred decomposition, `rgb()`, `ndvi()`, `to_xarray()` and GeoTIFF / npz export.
+- `fetch_sentinel2` STAC helper (`synapse-sr[stac]`).
+- `synapse-sr` command line and `python -m synapse_sr`, with `--env` diagnostics and `--version`.
+- Fused `mamba-ssm` selective scan when available, with a verified PyTorch fallback.
+- SYNAPSE Pro v1 research-preview checkpoint on Hugging Face.

@@ -24,6 +24,7 @@ jobs:
           python-version: "3.11"
       - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
       - run: pip install ".[docs]"
+      - run: python tools/make_llms_full.py
       - run: mkdocs build --strict
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -71,11 +71,19 @@ def main(argv=None):
     ap = argparse.ArgumentParser(prog="synapse-sr",
                                  description="Sentinel-2 10 m -> 2.0 m RGBN super-resolution (SYNAPSE Pro / Flash)",
                                  epilog="examples:\n  synapse-sr scene.tif scene_2m.tif\n"
-                                        "  synapse-sr scene.tif scene_2m.tif --model pro\n"
+                                        "  synapse-sr scene.tif scene_2m.tif --model pro --cog --preview preview.png\n"
+                                        "  synapse-sr scenes/ scenes_2m/                 (every GeoTIFF in a folder)\n"
+                                        "  synapse-sr --fetch 12.92,77.50 --dates 2025-01-01:2025-03-15 bengaluru_2m.tif\n"
                                         "  synapse-sr --env\n  synapse-sr --models",
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("input", nargs="?", help="Sentinel-2 GeoTIFF (10, 12 or 13 bands, or named bands)")
-    ap.add_argument("output", nargs="?", help="output GeoTIFF: B04 B03 B02 B08, ERRSCALE x4, SUPPORT")
+    ap.add_argument("input", nargs="?", help="Sentinel-2 GeoTIFF (10, 12 or 13 bands, or named bands), or a folder of them")
+    ap.add_argument("output", nargs="?", help="output GeoTIFF (B04 B03 B02 B08, ERRSCALE x4, SUPPORT), or a folder")
+    ap.add_argument("--fetch", metavar="LAT,LON", help="first download the least-cloudy Sentinel-2 L2A scene at this point "
+                                                       "(needs synapse-sr[stac]); OUTPUT is then the only positional")
+    ap.add_argument("--dates", metavar="START:END", help="date range for --fetch, e.g. 2025-01-01:2025-03-15 (default: last 90 days)")
+    ap.add_argument("--size-m", type=float, default=2000.0, help="edge of the --fetch area in metres (default 2000)")
+    ap.add_argument("--cog", action="store_true", help="write a Cloud-Optimised GeoTIFF (tiles + overviews)")
+    ap.add_argument("--preview", metavar="PNG", help="also save a side-by-side 10 m / 2 m / support preview image")
     ap.add_argument("--model", default="flash",
                     help="'flash' (default: fast on any CPU or GPU), 'pro' (highest detail, best on a GPU) or a registered name")
     ap.add_argument("--weights", help="local .safetensors checkpoint (no network access needed)")
@@ -104,6 +112,15 @@ def main(argv=None):
         else:
             _table("synapse-sr environment" if a.env else "registered models", rows)
         return 0
+    if a.fetch:
+        if a.output is None:                               # `--fetch LAT,LON out.tif`: the output is the only positional
+            a.input, a.output = None, a.input
+        if not a.output:
+            ap.error("--fetch needs an output path, e.g. synapse-sr --fetch 12.92,77.50 out.tif")
+        try:
+            a.input = _fetch(a)
+        except Exception as e:
+            return _fail(f"{type(e).__name__}: {e}")
     if not a.input or not a.output:
         ap.error("input and output are required (examples: synapse-sr --help)")
     if not os.path.exists(a.input):
@@ -124,13 +141,36 @@ def _fail(msg, code=1):
     return code
 
 
+def _fetch(a):
+    import datetime as dt
+    from synapse_sr import fetch_sentinel2
+    lat, lon = (float(v) for v in a.fetch.split(","))
+    if a.dates:
+        start, end = a.dates.split(":")
+    else:
+        today = dt.date.today()
+        start, end = str(today - dt.timedelta(days=90)), str(today)
+    out = os.path.splitext(a.output)[0] + "_s2_10m.tif"
+    print(f"synapse-sr: fetching Sentinel-2 L2A at {lat}, {lon} ({start} .. {end})", file=sys.stderr)
+    return fetch_sentinel2(lat, lon, start, end, size_m=a.size_m, out=out)
+
+
 def _run(a):
-    from synapse_sr import load, ui
+    from synapse_sr import load, super_resolve_folder, ui
+    kw = dict(scl=None if str(a.scl).lower() == "none" else a.scl, offset=a.offset, tile=a.tile, halo=a.halo, batch=a.batch)
+    if os.path.isdir(a.input):
+        rep = super_resolve_folder(a.input, a.output, model=a.model, weights=a.weights, device=a.device, cog=a.cog,
+                                   progress=False, **kw)
+        if a.json:
+            print(json.dumps(rep))
+        return 1 if any("error" in r for r in rep) else 0
     model = load(a.model, weights=a.weights, device=a.device)
-    r = model.super_resolve(a.input, scl=None if str(a.scl).lower() == "none" else a.scl, offset=a.offset,
-                            tile=a.tile, halo=a.halo, batch=a.batch,
-                            progress=False if (a.quiet or a.json) else "auto")
-    r.save(a.output, with_confidence=not a.no_confidence)
+    r = model.super_resolve(a.input, progress=False if (a.quiet or a.json) else "auto", **kw)
+    r.save(a.output, with_confidence=not a.no_confidence, cog=a.cog)
+    if a.preview:
+        import matplotlib
+        matplotlib.use("Agg")
+        r.quicklook(a.preview)
     if a.json:
         print(json.dumps(dict(r.summary(print_=False), output=a.output)))
     elif not a.quiet:

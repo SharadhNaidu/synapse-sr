@@ -265,3 +265,51 @@ def test_offset_detected_from_data_not_metadata(flash, tmp_path):
     assert r.metadata["offset"] == 0.0 and r.metadata["clamped_fraction"] < 0.01
     ok = flash.super_resolve(str(src), offset=-1000, progress=False)   # an explicit offset is always respected
     assert ok.metadata["offset"] == -1000
+
+
+# ------------------------------------------------------------------ convenience features
+def test_folder_batch_skips_sidecars_and_survives_a_bad_file(flash, tmp_path):
+    import synapse_sr
+    w = flash.save_pretrained(str(tmp_path / "f.safetensors"))
+    src = tmp_path / "in"; src.mkdir()
+    write_tif(src / "a.tif", scene(24, 24, seed=1)); write_tif(src / "b.tif", scene(20, 28, seed=2))
+    write_tif(src / "a_scl.tif", np.full((1, 12, 12), 4, np.uint8), names=None)
+    (src / "broken.tif").write_bytes(b"not a tiff")
+    rep = synapse_sr.super_resolve_folder(src, tmp_path / "out", model="flash", weights=w, device="cpu", progress=False)
+    done = {pathlib_name(r["input"]): r for r in rep}
+    assert set(done) == {"a.tif", "b.tif", "broken.tif"}                      # the SCL sidecar is not processed
+    assert "error" in done["broken.tif"] and "output" in done["a.tif"] and "output" in done["b.tif"]
+    again = synapse_sr.super_resolve_folder(src, tmp_path / "out", model="flash", weights=w, device="cpu", progress=False)
+    assert {r.get("skipped") for r in again if "error" not in r} == {"exists"}
+
+
+def pathlib_name(p):
+    import pathlib
+    return pathlib.Path(p).name
+
+
+def test_cog_output_and_quicklook(flash, tmp_path):
+    rasterio = pytest.importorskip("rasterio")
+    import matplotlib
+    matplotlib.use("Agg")
+    src = tmp_path / "s.tif"
+    write_tif(src, scene(128, 128, seed=3))                # 640 px output: larger than one 512 px COG tile
+    r = flash.super_resolve(str(src), progress=False)
+    out = r.save(str(tmp_path / "o.tif"), cog=True)
+    with rasterio.open(out) as d:
+        assert d.count == 9 and d.res == (2.0, 2.0) and d.profile.get("tiled", False)
+        assert d.overviews(1), "COG should carry overviews"
+    r.quicklook(str(tmp_path / "q.png"), panels=("input", "image", "support", "prior", "ndvi"))
+    assert (tmp_path / "q.png").stat().st_size > 10000
+
+
+def test_cli_folder_and_preview(flash, tmp_path):
+    from synapse_sr.cli import main as cli
+    w = flash.save_pretrained(str(tmp_path / "f.safetensors"))
+    src = tmp_path / "in"; src.mkdir()
+    write_tif(src / "a.tif", scene(24, 24, seed=4))
+    assert cli([str(src), str(tmp_path / "out"), "--weights", w, "--device", "cpu", "--quiet"]) == 0
+    assert (tmp_path / "out" / "a.tif").exists()
+    assert cli([str(src / "a.tif"), str(tmp_path / "o.tif"), "--weights", w, "--device", "cpu", "--quiet",
+                "--preview", str(tmp_path / "p.png"), "--cog"]) == 0
+    assert (tmp_path / "p.png").exists()

@@ -215,11 +215,12 @@ class Result:
         attrs = {"gsd_m": self.gsd, "crs": str(self.profile["crs"]) if self.profile else None}
         return xr.DataArray(self.image, dims=("band", "y", "x"), coords=coords, attrs=attrs, name="reflectance")
 
-    def save(self, path, with_confidence: bool = True):
+    def save(self, path, with_confidence: bool = True, cog: bool = False):
         """Write a float32 GeoTIFF (or ``.npz`` when the input was an array).
 
         Bands: B04 B03 B02 B08, then ERRSCALE_* x4 and SUPPORT unless ``with_confidence=False``.
-        Invalid pixels are written as NaN.
+        Invalid pixels are written as NaN. ``cog=True`` writes a Cloud-Optimised GeoTIFF (internal tiles and
+        overviews) that web maps, QGIS and cloud storage can stream.
         """
         if self.profile is None:
             if not str(path).lower().endswith(".npz"):
@@ -236,5 +237,43 @@ class Result:
         if with_confidence:
             names += ["ERRSCALE_" + b for b in BANDS] + ["SUPPORT"]
             extra = np.concatenate([self.confidence, self.support[None].astype(np.float32)])
-        geotiff.write(path, img, self.profile, self.metadata["scale"], names, extra=extra)
+        geotiff.write(path, img, self.profile, self.metadata["scale"], names, extra=extra, cog=cog)
         return path
+
+    def quicklook(self, path=None, panels=("input", "image", "support"), width_in: float = 12.0):
+        """Side-by-side preview: ``"input"`` (the 10 m measurement, shown with its real 10 m pixels), ``"image"``
+        (the 2 m result), ``"support"``, ``"x_base"``, ``"prior"``, ``"uncertainty"``, ``"ndvi"``. Saves a PNG when
+        ``path`` is given and returns the matplotlib figure. Requires ``matplotlib``."""
+        import matplotlib.pyplot as plt
+        from matplotlib.colors import ListedColormap
+        s = self.metadata.get("scale", 5)
+        h, w = self.image.shape[1:]
+        lo, hi = np.nanpercentile(self.image[:3][:, self.valid] if self.valid is not None and self.valid.any()
+                                  else self.image[:3], (2, 98))
+        stretch = lambda a: np.clip((np.nan_to_num(a[:3]).transpose(1, 2, 0) - lo) / max(hi - lo, 1e-9), 0, 1)
+        fig, axes = plt.subplots(1, len(panels), figsize=(width_in, width_in / len(panels) + 0.5), squeeze=False)
+        for ax, p in zip(axes[0], panels):
+            if p == "input":
+                m = self.image[:, : h // s * s, : w // s * s].reshape(4, h // s, s, w // s, s).mean((2, 4))
+                ax.imshow(stretch(np.repeat(np.repeat(m, s, 1), s, 2)), interpolation="nearest")
+                ax.set_title("Sentinel-2 10 m")
+            elif p == "image":
+                ax.imshow(stretch(self.image)); ax.set_title(f"synapse-sr {self.gsd:g} m")
+            elif p == "x_base":
+                ax.imshow(stretch(self.x_base)); ax.set_title("measured layer (x_base)")
+            elif p == "prior":
+                v = np.abs(self.prior[:3]).mean(0); ax.imshow(v, cmap="magma", vmax=np.nanpercentile(v, 99)); ax.set_title("added detail")
+            elif p == "support":
+                ax.imshow(self.support, cmap=ListedColormap(["#ef4444", "#f59e0b", "#22c55e"]), vmin=0, vmax=2,
+                          interpolation="nearest"); ax.set_title("support (green = measured)")
+            elif p == "uncertainty":
+                u = self.uncertainty().mean(0); ax.imshow(u, cmap="viridis", vmax=np.nanpercentile(u, 99)); ax.set_title("expected error")
+            elif p == "ndvi":
+                ax.imshow(self.ndvi(), cmap="RdYlGn", vmin=-0.2, vmax=0.9); ax.set_title("NDVI")
+            else:
+                raise ValueError(f"unknown panel {p!r}")
+            ax.set_axis_off()
+        fig.tight_layout()
+        if path is not None:
+            fig.savefig(path, dpi=150, bbox_inches="tight")
+        return fig

@@ -1,0 +1,38 @@
+# synapse-sr
+
+> synapse-sr is an open-source Python package (pip install synapse-sr) that super-resolves Sentinel-2 L2A satellite
+> imagery from 10 m to a 2 m output grid (red, green, blue, near-infrared), with a physics model of the Sentinel-2
+> sensor that keeps every output consistent with the measurement, a per-pixel support map separating measured from
+> inferred detail, and calibrated uncertainty. Two models: Flash (default, ~1 s per 1.28 km scene on a laptop CPU)
+> and Pro (Mamba state-space network, most detail, best on a GPU). GeoTIFF in, GeoTIFF out; CLI and Python API;
+> runs on Colab, Kaggle, Windows, macOS, Linux, CPU-only and offline.
+
+Minimal use:
+
+```python
+import synapse_sr
+r = synapse_sr.super_resolve("sentinel2_l2a.tif")      # model="pro" for Pro
+r.save("sentinel2_2m.tif")
+```
+
+CLI: `synapse-sr scene.tif scene_2m.tif`, `synapse-sr --fetch LAT,LON --dates START:END out.tif`, `synapse-sr scenes/ out/`.
+
+## Docs
+
+- [Quick start](https://sharadhnaidu.github.io/synapse-sr/quickstart/): install, get a scene, super-resolve, save
+- [Cheat sheet](https://sharadhnaidu.github.io/synapse-sr/cheatsheet/): every common task on one page
+- [Colab and Kaggle](https://sharadhnaidu.github.io/synapse-sr/guide/notebooks/): notebook setup
+- [Choosing a model and a device](https://sharadhnaidu.github.io/synapse-sr/guide/models/): Flash vs Pro, CPU/GPU/MPS
+- [Inputs](https://sharadhnaidu.github.io/synapse-sr/guide/inputs/): accepted formats, bands, offsets, cloud masks
+- [Outputs](https://sharadhnaidu.github.io/synapse-sr/guide/outputs/): Result attributes and the saved GeoTIFF
+- [Support, confidence and consistency](https://sharadhnaidu.github.io/synapse-sr/guide/support/): trust layers
+- [Applications](https://sharadhnaidu.github.io/synapse-sr/applications/): crops, urban, water, disaster change
+- [Examples](https://sharadhnaidu.github.io/synapse-sr/examples/): end-to-end recipes
+- [API reference](https://sharadhnaidu.github.io/synapse-sr/api/)
+- [Troubleshooting](https://sharadhnaidu.github.io/synapse-sr/troubleshooting/) and [FAQ](https://sharadhnaidu.github.io/synapse-sr/faq/)
+
+## Optional
+
+- [Full documentation as one file](https://sharadhnaidu.github.io/synapse-sr/llms-full.txt)
+- [Source code](https://github.com/SharadhNaidu/synapse-sr), [PyPI](https://pypi.org/project/synapse-sr/),
+  [weights on Hugging Face](https://huggingface.co/SharadhNaiduTrains/synapse-sr)
