@@ -5,7 +5,7 @@ from synapse_sr.data import fetch_sentinel2
 from synapse_sr.pro import Flash, Pro
 from synapse_sr.result import Result
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 __all__ = ["Pro", "Flash", "Result", "load", "super_resolve", "super_resolve_folder", "fetch_sentinel2", "change", "boundaries", "Change", "__version__"]
 
 _default = {}

@@ -1673,6 +1673,43 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-09-28
+
+### Added
+
+- **SYNAPSE Flash v1 released and now the default model.** It runs a 1.28 km scene in about 1 s on a laptop CPU and a
+  10 km x 10 km scene in about 14 s. It matches Pro on the official opensr-test benchmark (knowledge distillation from Pro;
+  trained on real Sentinel-2 / NAIP pairs, a streamed NAIP corpus and ISRO Cartosat-derived pairs). It ships with
+  calibrated uncertainty (82 / 91 / 95 % coverage at 80 / 90 / 95 %). Pro stays one argument away: `model="pro"`.
+- `synapse_sr.super_resolve_folder(src_dir, out_dir)` and `synapse-sr in_dir/ out_dir/`: batch a folder, skip cloud
+  sidecars and existing outputs, and keep going past a bad file.
+- `synapse-sr --fetch LAT,LON --dates START:END out.tif`: download and super-resolve in one command.
+- `Result.save(..., cog=True)` / `--cog`: Cloud-Optimised GeoTIFF with overviews.
+- `Result.quicklook("preview.png")` / `--preview`: side-by-side 10 m / 2 m / support preview.
+- `super_resolve(..., tta=True)`: test-time augmentation over 8 flips / rotations (small accuracy gain).
+- `super_resolve(..., discrepancy=)`: how tightly the physics baseline fits the measurement.
+- Documentation: cheat sheet, benchmark table in the README, `llms.txt` / `llms-full.txt` for AI assistants,
+  `AGENTS.md`, `CITATION.cff`; every documentation example is executed in CI-like runs.
+- `tools/stress.py`: 27-case stress suite with the published weights.
+
+### Changed
+
+- **Physics baseline:** one regularisation weight for all bands, fitted to 4x the L2A sensor noise (it absorbs
+  forward-model error). This strongly reduces hallucinated detail and spectral-angle error on the official benchmark
+  (VENuS hallucination 0.351 -> 0.198). The consistency readout is correspondingly a few noise units.
+- **Memory-aware tiling:** tile and batch sizes follow free GPU memory (or a RAM budget on CPU). Pro is about 2.5x faster.
+- Uncertainty calibration refitted for the new physics defaults (Pro 82 / 91 / 96 %).
+
+### Fixed
+
+- Some Earth Search Sentinel-2 items flag the baseline-04.00 offset as not applied when it already was. Such scenes
+  were read about 0.1 reflectance too dark. The offset is now decided from the pixel values (with a warning),
+  in `fetch_sentinel2` and for tagged GeoTIFFs; an explicit `offset=` is always respected.
+- NaN / inf inputs are masked instead of zeroed. Outputs are clamped to [0, 1.5] reflectance, and clamped pixels
+  get LOW support. Consistency is NaN when no pixel is valid. `halo >= tile` raises. Saving array input to `.tif`
+  raises instead of silently writing `.npz`. `torch.cuda.mem_get_info` works on torch < 2.1.
+- Flash: the confidence head no longer steers the network body.
+
 ## [0.3.0] - 2026-09-24
 
 ### Added
