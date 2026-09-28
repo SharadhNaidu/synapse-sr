@@ -26,6 +26,8 @@ Reproduce: `pip install "synapse-sr[stac]" pillow`, then `python tools/make_gifs
 ### Process a whole folder
 
 ```python
+import synapse_sr
+
 import pathlib
 from synapse_sr import Pro
 
@@ -43,26 +45,34 @@ Or from the shell: `for f in scenes/*.tif; do synapse-sr "$f" "out_2m/$(basename
 
 ### Only an area of interest from a big scene
 
-Crop at 10 m first. Every 10 m pixel you skip saves 25 output pixels of work.
+Crop at 10 m first. Every 10 m pixel you skip saves 25 output pixels of work. Writing the crop as a small
+GeoTIFF keeps its coordinates, so the result is georeferenced too.
 
 ```python
 import rasterio
-from rasterio.windows import from_bounds
+from rasterio.windows import Window
 from synapse_sr import Pro
 
+win = Window(col_off=0, row_off=0, width=64, height=64)          # 640 m x 640 m, in 10 m pixels
 with rasterio.open("T43PGQ_full_scene.tif") as src:
-    win = from_bounds(776000, 1428000, 778000, 1430000, src.transform)   # xmin ymin xmax ymax in the scene CRS
-    arr = src.read(window=win)
-    names = src.descriptions
-r = Pro.from_pretrained().super_resolve(arr, band_names=names)
+    profile = dict(src.profile, width=win.width, height=win.height, transform=src.window_transform(win))
+    with rasterio.open("aoi.tif", "w", **profile) as dst:
+        dst.write(src.read(window=win))
+        dst.descriptions = src.descriptions
+        dst.update_tags(**src.tags())                           # keeps BOA_ADD_OFFSET
+
+r = Pro.from_pretrained().super_resolve("aoi.tif")
+r.save("aoi_2m.tif")
 ```
 
-Array input has no georeferencing, so `r.save` writes `.npz`. To keep coordinates, write the crop to a GeoTIFF
-first (`rasterio` with `src.window_transform(win)`) and pass the path.
+To select by map coordinates instead, build the window with
+`rasterio.windows.from_bounds(xmin, ymin, xmax, ymax, src.transform)` in the scene's CRS.
 
 ### A laptop without a GPU
 
 ```python
+import synapse_sr
+
 from synapse_sr import Flash, Pro
 
 model = Flash.from_pretrained(device="cpu")          # once Flash weights are released
@@ -86,6 +96,8 @@ Export.image.toDrive({image: img.toUint16(), region: aoi, scale: 10, crs: img.se
 ```
 
 ```python
+from synapse_sr import Pro
+
 r = Pro.from_pretrained().super_resolve("s2_for_synapse.tif",
                                         band_names=["B04", "B03", "B02", "B08", "B05", "B06", "B07", "B8A", "B11", "B12"],
                                         offset=0)          # the HARMONIZED collection already removed the offset
@@ -97,6 +109,8 @@ r = Pro.from_pretrained().super_resolve("s2_for_synapse.tif",
 ### xarray, stackstac and cubo
 
 ```python
+import synapse_sr
+
 import cubo                                          # pip install cubo
 from synapse_sr import Pro
 da = cubo.create(lat=12.92, lon=77.50, collection="sentinel-2-l2a",
@@ -125,6 +139,8 @@ Restricting statistics to `support == 2` keeps prior-dominated pixels out of the
 ### Per-field statistics with polygons
 
 ```python
+import synapse_sr
+
 import geopandas as gpd, numpy as np, rasterio.features
 from synapse_sr import Pro
 
@@ -168,6 +184,9 @@ print(f"new water: {flood.area_km2:.2f} km2, could not assess: {100 * flood.unre
 ### Use the output in QGIS
 
 ```python
+import synapse_sr
+r = synapse_sr.super_resolve("scene.tif")
+
 r.save("scene_2m.tif")                               # bands 1-4: B04 B03 B02 B08; 5-8: ERRSCALE; 9: SUPPORT
 ```
 
@@ -178,6 +197,9 @@ bands.
 ### Show a progress bar inside your own application
 
 ```python
+from synapse_sr import Pro
+model = Pro.from_pretrained()
+
 def on_tile(done, total):
     my_progress_widget.set(done / total)
 

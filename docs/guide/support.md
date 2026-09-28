@@ -6,6 +6,9 @@ second is what the model infers from learned priors. synapse-sr keeps the two ap
 ## Decomposition
 
 ```python
+import synapse_sr
+result = synapse_sr.super_resolve("scene.tif")
+
 result.x_base   # determined by the Sentinel-2 observation
 result.prior    # contributed by the learned prior; invisible to the sensor
 ```
@@ -29,6 +32,9 @@ The thresholds are heuristic and are reported in `result.metadata["support_class
 ## Calibrated uncertainty
 
 ```python
+import synapse_sr
+result = synapse_sr.super_resolve("scene.tif")
+
 err = result.uncertainty()        # (4, 5H, 5W) expected absolute error, reflectance
 half = result.interval(0.9)       # reference within image +/- half with probability 0.9
 ```

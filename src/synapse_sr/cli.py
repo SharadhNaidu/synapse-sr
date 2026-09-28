@@ -83,7 +83,7 @@ def main(argv=None):
     ap.add_argument("--scl", default="auto", help="scene classification raster; 'auto' uses <input>_scl.tif, 'none' disables")
     ap.add_argument("--offset", type=float, help="DN offset, e.g. -1000 for baseline >= 04.00 (default: BOA_ADD_OFFSET tag or 0)")
     ap.add_argument("--tile", type=int, help="tile size in source pixels")
-    ap.add_argument("--halo", type=int, default=16, help="tile context halo in source pixels (default 16)")
+    ap.add_argument("--halo", type=int, help="tile context halo in source pixels (default 16, below the tile size)")
     ap.add_argument("--batch", type=int, help="tiles per forward pass (lower it if memory is short)")
     ap.add_argument("--no-confidence", action="store_true", help="write the four reflectance bands only")
     ap.add_argument("--json", action="store_true", help="machine-readable JSON on stdout instead of tables")

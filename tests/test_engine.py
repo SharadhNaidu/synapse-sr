@@ -222,3 +222,32 @@ def test_cli_errors_are_clean_messages(tmp_path, capsys):
     assert cli([str(src), str(tmp_path / "o.tif"), "--model", "no-such-model"]) == 1
     err = capsys.readouterr().err
     assert "no-such-model" in err and "Traceback" not in err
+
+
+# ------------------------------------------------------------------ robustness (external verification report)
+def test_bad_inputs_are_masked_clamped_and_flagged(flash):
+    arr = scene(24, 24, seed=12, dn=False)
+    arr[:, 5, 5] = np.nan
+    rng = np.random.default_rng(0)
+    sp = rng.random(arr.shape[1:]) < 0.05
+    arr[:, sp] = rng.choice([0.0, 2.5], sp.sum())                 # salt and pepper
+    r = flash.super_resolve(arr, band_names=S2_12, tile=24, offset=0.0)
+    assert np.isfinite(r.image).all() and r.image.min() >= 0.0 and r.image.max() <= 1.5
+    assert not r.valid[25:30, 25:30].any()
+    assert (r.support[r.image.max(0) >= 1.5] == 0).all()
+    assert 0.0 <= r.metadata["clamped_fraction"] <= 1.0
+
+
+def test_consistency_is_nan_without_valid_pixels(flash):
+    arr = np.zeros((12, 20, 20), np.float32)
+    r = flash.super_resolve(arr, band_names=S2_12, tile=20)
+    assert all(np.isnan(v) for v in r.consistency.values()) and (r.support == 0).all()
+
+
+def test_halo_and_save_errors(flash, tmp_path):
+    arr = scene(16, 16)
+    with pytest.raises(ValueError, match="halo"):
+        flash.super_resolve(arr, band_names=S2_12, tile=16, halo=16)
+    r = flash.super_resolve(arr, band_names=S2_12, tile=16)
+    with pytest.raises(ValueError, match="npz"):
+        r.save(str(tmp_path / "o.tif"))

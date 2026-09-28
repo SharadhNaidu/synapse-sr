@@ -53,6 +53,9 @@ carry `BOA_ADD_OFFSET = -1000`:
 | Scene classification (SCL) | classes 0 no data, 1 saturated or defective, 3 cloud shadow, 8 and 9 cloud, 10 cirrus |
 
 ```python
+from synapse_sr import Pro
+model = Pro.from_pretrained()
+
 result = model.super_resolve("scene.tif", scl="scene_SCL.tif")   # 10 m or 20 m SCL
 result = model.super_resolve("scene.tif")                        # uses scene_scl.tif next to the input if present
 result = model.super_resolve("scene.tif", scl=None)              # no SCL masking

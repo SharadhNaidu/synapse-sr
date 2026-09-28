@@ -222,6 +222,9 @@ class Result:
         Invalid pixels are written as NaN.
         """
         if self.profile is None:
+            if not str(path).lower().endswith(".npz"):
+                raise ValueError("this result came from an array without georeferencing, so it cannot be written as a "
+                                 "GeoTIFF: save it as .npz, or pass a GeoTIFF path to super_resolve")
             np.savez_compressed(path, image=self.image, confidence=self.confidence, support=self.support,
                                 valid=self.valid)
             return path

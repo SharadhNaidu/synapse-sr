@@ -30,6 +30,9 @@ pip install synapse-sr
 
 ```python
 import synapse_sr
+result = synapse_sr.super_resolve("scene.tif")
+
+import synapse_sr
 
 r = synapse_sr.super_resolve("sentinel2_l2a.tif")   # progress bar, then a 5x larger result
 r.save("sentinel2_2m.tif")                           # georeferenced, same CRS and bounds
@@ -67,6 +70,9 @@ what is published.
 ## Why trust the output
 
 ```python
+import synapse_sr
+r = synapse_sr.super_resolve("scene.tif")
+
 r.x_base        # what the 10 m observation determines
 r.prior         # what the network added (x_base + prior == image), invisible to the sensor
 r.support       # per pixel: 2 observation-determined, 1 medium, 0 prior-dominated or invalid

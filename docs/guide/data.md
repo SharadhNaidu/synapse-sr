@@ -7,6 +7,8 @@ pip install "synapse-sr[stac]"
 ```
 
 ```python
+import synapse_sr
+
 from synapse_sr import fetch_sentinel2
 
 path = fetch_sentinel2(lat=30.935, lon=75.800, start="2024-11-01", end="2025-01-31", size_m=3000)

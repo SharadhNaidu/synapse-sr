@@ -74,5 +74,8 @@ flood / landslide change detection.
 If the GPU runs out of memory, lower `batch` (tiles per forward pass) or `tile`:
 
 ```python
-r = model.super_resolve(scene, batch=2)
+from synapse_sr import Pro
+
+model = Pro.from_pretrained()
+r = model.super_resolve("scene.tif", batch=2)          # 2 tiles per forward pass
 ```

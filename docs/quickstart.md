@@ -77,8 +77,11 @@ It opens directly in QGIS or ArcGIS, or with `rasterio`.
 idx = r.indices()                                    # ndvi savi evi gndvi ndwi, + ndre ndbi nbr mndwi
 fields = synapse_sr.boundaries(r, "field")           # crop-parcel edges
 urban = synapse_sr.boundaries(r, "urban")            # building and road edges
-flood = synapse_sr.change(before, after, "ndwi")     # two dates -> changed area in km²
 err = r.uncertainty()                                # calibrated expected error per pixel
+
+before = synapse_sr.super_resolve(synapse_sr.fetch_sentinel2(12.9237, 77.4987, "2024-01-01", "2024-03-15", size_m=1280))
+flood = synapse_sr.change(before, r, "ndwi")         # two dates of the same place -> changed area in km²
+print(f"{flood.area_km2:.3f} km2 changed")
 ```
 
 See [Applications](applications.md) for crop monitoring, urban analysis, water and disaster assessment.

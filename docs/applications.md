@@ -25,6 +25,8 @@ boundaries) is 0.599 for SYNAPSE Pro v2 (Pro v1: 0.597). The comparison figures 
 ## Urban analysis
 
 ```python
+import synapse_sr
+
 r = synapse_sr.super_resolve("city.tif")
 edges = synapse_sr.boundaries(r, "urban")         # buildings, roads
 built = r.indices()["ndbi"]                       # built-up index (20 m SWIR context)
@@ -46,6 +48,9 @@ Exact 2 m footprint outlines remain beyond every product. Pixel IoU is 0.35–0.
 ## Water and flood mapping
 
 ```python
+import synapse_sr
+r = synapse_sr.super_resolve("scene.tif")
+
 water = r.indices()["ndwi"] > 0                   # 2 m water mask
 shore = synapse_sr.boundaries(r, "water")         # shoreline / flood-front strength
 ```
@@ -53,6 +58,8 @@ shore = synapse_sr.boundaries(r, "water")         # shoreline / flood-front stre
 ## Disaster and change assessment
 
 ```python
+import synapse_sr
+
 before = synapse_sr.super_resolve("before.tif")
 after = synapse_sr.super_resolve("after.tif")
 

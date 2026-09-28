@@ -64,6 +64,8 @@ class SynapseFlashX5(nn.Module):
     in sequence on all ten input bands, which gives a far larger receptive field for the same inference cost
     per block."""
 
+    IN_MEAN, IN_STD, OUT_SCALE = 0.15, 0.10, 0.01          # chained model works in normalised units (reflectance ~0.2, detail ~0.005)
+
     def __init__(self, feat=24, blocks=6, n_in=4, chained=False, scale=SCALE):
         super().__init__()
         self.scale, self.n_in, self.chained = scale, n_in, chained
@@ -94,7 +96,7 @@ class SynapseFlashX5(nn.Module):
         if self.chained:
             f, mid = f0, None
             for i, blk in enumerate(self.blocks):
-                f, _ = blk(f)
+                f = f + blk(f)[0]                                 # residual: SPAB's gated output is ~0 at init
                 if i == len(self.blocks) // 2 - 1:
                     mid = f
             return self.conv_cat(torch.cat([f0, self.conv_2(f), mid], 1))
@@ -105,8 +107,13 @@ class SynapseFlashX5(nn.Module):
         return self.conv_cat(torch.cat([f0, self.conv_2(out), b1, o1], 1))
 
     def forward(self, y10):
-        f = self.features(y10[:, :self.n_in])
-        return {"delta": self.to_delta(f), "conf_logit": self.to_conf(f)}
+        y = y10[:, :self.n_in]
+        if self.chained:
+            f = self.features((y - self.IN_MEAN) / self.IN_STD)
+            return {"delta": self.to_delta(f) * self.OUT_SCALE, "conf_logit": self.to_conf(f.detach())}
+        f = self.features(y)
+        # detached: the error-scale NLL must not steer the body (it dominated the clipped gradient, as in Pro)
+        return {"delta": self.to_delta(f), "conf_logit": self.to_conf(f.detach())}
 
     def load_lite_body(self, state_dict):
         """Body weights from a SEN2SR-Lite RGBN checkpoint (keys conv_1, blocks, conv_cat, conv_2)."""

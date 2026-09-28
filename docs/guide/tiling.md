@@ -5,13 +5,17 @@ grid. The output is always exactly `5H x 5W`: square, portrait, landscape and od
 no region is dropped.
 
 ```python
+from synapse_sr import Pro
+model = Pro.from_pretrained()
+
 result = model.super_resolve("large_scene.tif", tile=64, halo=16)
 ```
 
 | Parameter | Default | Meaning |
 |---|---|---|
-| `tile` | 64 with the fused CUDA kernel, 32 otherwise | tile edge in 10 m source pixels |
-| `halo` | 16 | extra context on each side, discarded after processing |
+| `tile` | automatic: the largest tile that fits the free GPU memory (or a 6 GB RAM budget on CPU) | tile edge in 10 m source pixels |
+| `batch` | automatic on GPU (up to 8), 1 on CPU | tiles per forward pass |
+| `halo` | 16 (below `tile`) | extra context on each side, discarded after processing |
 
 The regularisation weight of the baseline is chosen once per scene, so it is identical across tiles. Tiled and
 single-window results agree to 0.4 % relative RMS in the interior. The package tests check this
@@ -19,8 +23,9 @@ single-window results agree to 0.4 % relative RMS in the interior. The package t
 
 ## Memory
 
-Peak memory grows with `(tile + 2 * halo)^2`. If a GPU runs out of memory, lower `tile` first. On CPU, keep
-`tile` at 32 or below.
+Peak memory grows with `(tile + 2 * halo)^2`. The automatic choice leaves headroom; if memory is still short, pass a
+smaller `tile` or `batch`. Larger tiles are faster: a 32-pixel tile with a 16-pixel halo computes four times its
+output area, a 96-pixel tile under twice.
 
 ## Throughput
 

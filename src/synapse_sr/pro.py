@@ -3,6 +3,7 @@
 import contextlib
 import os
 import time
+import warnings
 from typing import Callable, Optional, Sequence, Union
 
 import numpy as np
@@ -24,6 +25,7 @@ from synapse_sr.result import Result
 
 SCALE = 5
 SCL_INVALID = (0, 1, 3, 8, 9, 10)          # no data, saturated/defective, cloud shadow, cloud medium/high, cirrus
+CLAMP = (0.0, 1.5)                          # physical reflectance range of the output
 SUPPORT_T = (3.0, 10.0)                    # |prior| / tau_b: below 3 HIGH, 3-10 MEDIUM, above LOW (heuristic)
 
 PathLike = Union[str, "os.PathLike[str]"]
@@ -100,8 +102,28 @@ class Pro:
     def _backend(self, y):
         return backend(y)
 
-    def _default_tile(self, kind):
-        return 64 if kind in ("fused", "triton") else 32
+    BYTES_PER_PX = {"pytorch": 3.0e5, "triton": 1.2e5, "fused": 1.2e5, "cnn": 2.0e4}   # measured peak per window px
+
+    def _plan(self, kind, H, W, halo, tile, batch):
+        """Largest tile, then largest batch, that fit the memory budget: fewer, larger windows waste less of
+        the context halo (tile 32 + halo 16 computes 4x the output area; tile 96 1.8x)."""
+        if self.device.type == "cuda":
+            free, _ = torch.cuda.mem_get_info(self.device)
+            budget = 0.6 * free
+        else:
+            budget = 6e9
+        per = self.BYTES_PER_PX.get(kind, 3.0e5)
+        if tile is None:
+            tile = 32
+            for t in (256, 192, 128, 96, 64, 48, 32):
+                if (t + 2 * halo) ** 2 * per <= budget:
+                    tile = t
+                    break
+        tile = max(8, min(tile, max(H, W)))
+        if batch is None:
+            fit = int(budget // ((min(tile, H) + 2 * halo) * (min(tile, W) + 2 * halo) * per))
+            batch = max(1, min(8, fit)) if self.device.type == "cuda" else 1
+        return tile, batch
 
     @classmethod
     def from_pretrained(cls, name: str = registry.DEFAULT, weights: Optional[PathLike] = None,
@@ -168,7 +190,7 @@ class Pro:
     @torch.no_grad()
     def super_resolve(self, src: Union[PathLike, np.ndarray], band_names: Optional[Sequence[str]] = None,
                       scl: Optional[Union[PathLike, np.ndarray]] = "auto", nodata: Optional[float] = None,
-                      offset: Optional[float] = None, tile: Optional[int] = None, halo: int = 16,
+                      offset: Optional[float] = None, tile: Optional[int] = None, halo: Optional[int] = None,
                       context: bool = True, batch: Optional[int] = None,
                       progress: Union[bool, str, Callable[[int, int], None]] = "auto") -> Result:
         """Super-resolve one Sentinel-2 scene.
@@ -192,10 +214,10 @@ class Pro:
             Added to DN before dividing by 10000 (``-1000`` for L2A processing baseline 04.00 and later).
             ``None`` (default) reads the GeoTIFF ``BOA_ADD_OFFSET`` tag, else 0. Ignored for reflectance input.
         tile, halo:
-            Source-pixel tile size and context halo. Default tile: 64 on a GPU scan (mamba-ssm or Triton), 32 on
-            the PyTorch fallback.
+            Source-pixel tile size and context halo. By default the largest tile (and batch) that fits the free GPU
+            memory, or a 6 GB RAM budget on CPU, is chosen: larger tiles waste less computation on the halo.
         batch:
-            Tiles processed together (default 8 on CUDA, 1 on CPU). Lower it if GPU memory is short.
+            Tiles processed together (default: as many as fit the free GPU memory, up to 8; 1 on CPU).
         progress:
             ``"auto"`` (default) shows a live progress bar in terminals and notebooks and stays silent when output
             is piped or logged; ``True`` / ``False`` force it on / off; a callable ``f(done, total)`` receives the
@@ -238,10 +260,11 @@ class Pro:
             scl = None
         if offset is None:
             offset = float(tags.get("BOA_ADD_OFFSET", 0.0))
-        if np.issubdtype(arr.dtype, np.floating):
-            arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
         arr = select_bands(arr, list(band_names) if band_names else None)
         valid = np.ones(arr.shape[1:], bool)
+        if np.issubdtype(arr.dtype, np.floating):
+            valid &= np.isfinite(arr).all(0)                  # NaN / inf inputs are invalid pixels, not zeros
+            arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
         if nodata is not None:
             valid &= ~(arr == nodata).any(0)
         valid &= ~(arr == 0).all(0)
@@ -258,7 +281,11 @@ class Pro:
 
         y10 = torch.tensor(to_reflectance(arr, offset=offset), dtype=torch.float32, device=self.device)[None]
         kind = self._backend(y10)
-        tile = tile or self._default_tile(kind)
+        if halo is not None and tile is not None and halo >= tile:
+            raise ValueError(f"halo ({halo}) must be smaller than tile ({tile}); a halo only adds context around a tile")
+        if halo is None:
+            halo = 16 if tile is None else min(16, tile - 1)
+        tile, batch = self._plan(kind, *y10.shape[-2:], halo, tile, batch)
         amp = _amp_dtype(self.device)
         H, W = y10.shape[-2:]
         y4 = y10[:, :4]
@@ -278,7 +305,7 @@ class Pro:
         groups = {}
         for jb in jobs:                                   # equal-shape windows run as one batch (all solves are per sample)
             groups.setdefault((jb[6] - jb[4], jb[7] - jb[5]), []).append(jb)
-        bs = batch or (8 if self.device.type == "cuda" else 1)
+        bs = batch
         wins = []
         for shape, members in groups.items():
             for k in range(0, len(members), bs):
@@ -308,30 +335,41 @@ class Pro:
         if bar:
             bar.stage("checking observation consistency")
         tau = baseline.tau_for(self.op)
+        clamped = (x < CLAMP[0]) | (x > CLAMP[1])                 # unphysical values only arise from bad inputs
+        x = x.clamp(*CLAMP)
+        vt = torch.tensor(valid, device=self.device, dtype=torch.float32)[None, None]
         num = torch.zeros(4, device=self.device)
-        cnt = 0
-        for r0, c0, r1, c1 in wins:                       # measured on the mosaic, so seams count
+        cnt = 0.0
+        for r0, c0, r1, c1 in wins:                       # measured on the mosaic over valid pixels, so seams count
             xw = x[..., SCALE * r0:SCALE * r1, SCALE * c0:SCALE * c1]
             (oh, qh), (ow, qw) = self.op.block(xw.shape[-2]), self.op.block(xw.shape[-1])
             if qh <= 0 or qw <= 0:
                 continue
             r = self.op(xw) - y4[..., r0 + oh:r0 + oh + qh, c0 + ow:c0 + ow + qw]
-            num += r.pow(2).sum((0, 2, 3))
-            cnt += qh * qw
-        rms = (num / max(cnt, 1)).sqrt() / tau
+            m = vt[..., r0 + oh:r0 + oh + qh, c0 + ow:c0 + ow + qw]
+            num += (r.pow(2) * m).sum((0, 2, 3))
+            cnt += float(m.sum())
+        rms = (num / cnt).sqrt() / tau if cnt > 0 else torch.full((4,), float("nan"), device=self.device)
+        bad = [b for b, v in zip(self.op.bands, rms.tolist()) if v > 2.5]
+        if bad:
+            warnings.warn(f"the output disagrees with the input beyond sensor noise in {bad} (RMS > 2.5 tau): check the "
+                          f"band order, the radiometric offset and that the input is Sentinel-2 L2A on the 10 m grid",
+                          RuntimeWarning, stacklevel=3)
 
         prior = (x - base)[0]
         s = (prior.abs() / tau.view(-1, 1, 1)).amax(0).cpu().numpy()
         support = np.where(s < SUPPORT_T[0], 2, np.where(s < SUPPORT_T[1], 1, 0)).astype(np.uint8)
         v2 = np.repeat(np.repeat(valid, SCALE, 0), SCALE, 1)
         support[~v2] = 0
+        support[clamped[0].any(0).cpu().numpy()] = 0
         gsd = abs(profile["transform"].a) / SCALE if profile else 10.0 / SCALE
         meta = {"scale": SCALE, "model": self.meta.get("name", "local"), "scan_backend": kind,
                 "precision": "bfloat16" if amp is not None else "float32", "tile": tile, "halo": halo,
                 "lambda": lam.tolist(), "bands": list(self.op.bands),
                 "support_classes": {"2": "HIGH: observation-determined", "1": "MEDIUM",
                                     "0": "LOW: prior-dominated or invalid input", "thresholds_tau": SUPPORT_T},
-                "invalid_input_fraction": float(1 - valid.mean()), "scl": scl_used, "offset": offset,
+                "invalid_input_fraction": float(1 - valid.mean()),
+                "clamped_fraction": float(clamped.float().mean()), "clamp_range": CLAMP, "scl": scl_used, "offset": offset,
                 "consistency_note": "RMS(A x - y) / tau under the nominal Sentinel-2 forward model"}
         ctx = None
         if context:
@@ -359,5 +397,3 @@ class Flash(Pro):
     def _backend(self, y):
         return "cnn"
 
-    def _default_tile(self, kind):
-        return 128

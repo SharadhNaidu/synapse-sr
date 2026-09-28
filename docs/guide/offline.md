@@ -20,6 +20,8 @@ weights by `Pro.from_pretrained()`, and that is skipped when you pass a local fi
     ```
 
 ```python
+import synapse_sr
+
 from synapse_sr import Pro
 model = Pro.from_pretrained(weights="/opt/models/synapse-pro-v2.safetensors")
 ```
@@ -32,6 +34,9 @@ SHA-256 on every load. A corrupted or tampered file raises an error that names t
 ## Your own checkpoints
 
 ```python
+from synapse_sr import Pro
+model = Pro.from_pretrained()
+
 model.save_pretrained("my-model.safetensors")         # model + sensor operator in one file
 Pro.from_pretrained(weights="my-model.safetensors")
 ```

@@ -17,6 +17,9 @@
 ## Helpers
 
 ```python
+import synapse_sr
+result = synapse_sr.super_resolve("scene.tif")
+
 result.rgb()          # (5H, 5W, 3) uint8 true-colour quicklook, 2-98 % stretch
 result.ndvi()         # (5H, 5W) NDVI, NaN where invalid
 result.to_xarray()    # DataArray (band, y, x) with map coordinates (needs xarray)

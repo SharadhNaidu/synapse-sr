@@ -13,6 +13,8 @@ only in the network that predicts `delta`.
 | CLI | `--model pro` (default) | `--model flash` |
 
 ```python
+import synapse_sr
+
 from synapse_sr import Pro, Flash
 
 pro = Pro.from_pretrained()                       # most accurate
