@@ -56,6 +56,13 @@ Official [opensr-test](https://github.com/ESAOpenSR/opensr-test) protocol (Aybar
 high-resolution references, `opensr_test.Metrics()` defaults, mean over its five datasets (NAIP, SPOT, Spain urban,
 Spain crops, VENµS; 178 scenes). Every model at its native scale, compared on the reference grid.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/SharadhNaidu/synapse-sr/main/docs/assets/benchmark-dark.png">
+    <img src="https://raw.githubusercontent.com/SharadhNaidu/synapse-sr/main/docs/assets/benchmark-light.png" alt="Official Sentinel-2 super-resolution benchmark: SYNAPSE leads on 5 of 7 measures" width="100%">
+  </picture>
+</p>
+
 | Model | Improvement ↑ | Omission ↓ | Hallucination ↓ | Detail corr. ↑ | RMSE ↓ | Spectral error ↓ | Reflectance error ↓ |
 |---|---|---|---|---|---|---|---|
 | **SYNAPSE Flash** | 0.155 | 0.748 | 0.097 | **0.300** | **0.0234** | 0.401 | 0.0018 |

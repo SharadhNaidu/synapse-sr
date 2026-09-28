@@ -1,11 +1,12 @@
-# synapse-sr
+# SYNAPSE-SR (synapse-sr)
 
 > synapse-sr is an open-source Python package (pip install synapse-sr) that super-resolves Sentinel-2 L2A satellite
-> imagery from 10 m to a 2 m output grid (red, green, blue, near-infrared), with a physics model of the Sentinel-2
+> imagery from 10 m to 2 m resolution (red, green, blue, near-infrared), with a physics model of the Sentinel-2
 > sensor that keeps every output consistent with the measurement, a per-pixel support map separating measured from
 > inferred detail, and calibrated uncertainty. Two models: Flash (default, ~1 s per 1.28 km scene on a laptop CPU)
 > and Pro (Mamba state-space network, most detail, best on a GPU). GeoTIFF in, GeoTIFF out; CLI and Python API;
-> runs on Colab, Kaggle, Windows, macOS, Linux, CPU-only and offline.
+> runs on Colab, Kaggle, Windows, macOS, Linux, CPU-only and offline. On the official opensr-test benchmark (178 scenes,
+> five datasets) it is best on five of seven measures (version 0.4.1).
 
 Minimal use:
 
@@ -42,10 +43,17 @@ CLI: `synapse-sr scene.tif scene_2m.tif`, `synapse-sr --fetch LAT,LON --dates ST
 
 <!-- index.md -->
 
+---
+title: Sentinel-2 super-resolution to 2 m resolution
+description: SYNAPSE-SR (synapse-sr) turns Sentinel-2 10 m imagery into 2 m resolution GeoTIFFs with a physics-consistent deep-learning model, per-pixel trust maps and calibrated uncertainty. pip install synapse-sr.
+---
+
 <p align="center">
   <img src="assets/logo-wordmark.svg#only-light" alt="synapse-sr" width="440">
   <img src="assets/logo-wordmark-dark.svg#only-dark" alt="synapse-sr" width="440">
 </p>
+
+<h1 align="center">SYNAPSE-SR: Sentinel-2 super-resolution to 2 m</h1>
 
 <p align="center"><b>Sentinel-2 at 2 m, with every pixel accounted for.</b></p>
 
@@ -100,6 +108,25 @@ r.save("sentinel2_2m.tif")
 
 Worked examples: [Applications](applications.md).
 
+## Benchmarks
+
+![Official Sentinel-2 super-resolution benchmark](assets/benchmark-light.png#only-light)
+![Official Sentinel-2 super-resolution benchmark](assets/benchmark-dark.png#only-dark)
+
+Official [opensr-test](https://github.com/ESAOpenSR/opensr-test) protocol: Sentinel-2 L2A input, harmonised
+high-resolution references, mean over five datasets (NAIP, SPOT, Spain urban, Spain crops, VENµS; 178 scenes),
+synapse-sr 0.4.1 defaults. SYNAPSE is best on five of the seven measures.
+
+| Model | Improvement ↑ | Omission ↓ | Hallucination ↓ | Detail corr. ↑ | RMSE ↓ | Spectral error ↓ | Reflectance error ↓ |
+|---|---|---|---|---|---|---|---|
+| **SYNAPSE Flash** | 0.155 | 0.748 | 0.097 | **0.300** | **0.0234** | 0.401 | 0.0018 |
+| **SYNAPSE Pro** | **0.199** | 0.631 | 0.171 | 0.289 | 0.0254 | **0.223** | **0.0011** |
+| SEN2SR | 0.150 | 0.759 | 0.091 | 0.284 | 0.0235 | 0.665 | 0.0025 |
+| SEN2SR-Lite | 0.152 | 0.749 | 0.099 | 0.290 | **0.0234** | 0.463 | 0.0019 |
+| LDSR-S2 | 0.197 | 0.599 | 0.204 | 0.206 | 0.0240 | 1.015 | 0.0036 |
+| Satlas ESRGAN | 0.129 | **0.181** | 0.690 | 0.089 | 0.0443 | 7.787 | 0.0242 |
+| Bicubic | 0.102 | 0.830 | **0.068** | 0.279 | **0.0234** | 0.601 | 0.0028 |
+
 ## Flash or Pro
 
 | | **Flash** (default) | **Pro** |
@@ -125,6 +152,10 @@ More: [Choosing a model and a device](guide/models.md).
 ---
 
 <!-- installation.md -->
+
+---
+description: Install SYNAPSE-SR (synapse-sr) with pip on Windows, macOS, Linux, Google Colab or Kaggle, CPU or GPU. Sentinel-2 super-resolution in Python.
+---
 
 # Installation
 
@@ -208,6 +239,10 @@ version). `synapse-sr --models` lists the registered checkpoints and whether the
 ---
 
 <!-- quickstart.md -->
+
+---
+description: Super-resolve a Sentinel-2 scene from 10 m to 2 m resolution in three lines of Python with SYNAPSE-SR: GeoTIFF in, georeferenced 2 m GeoTIFF out.
+---
 
 # Quick start
 
@@ -1195,6 +1230,10 @@ application helpers.
 
 <!-- applications.md -->
 
+---
+description: What 2 m Sentinel-2 imagery from SYNAPSE-SR is used for: building detection in Indian cities, field boundaries, flood and water mapping, disaster change detection.
+---
+
 # Applications
 
 synapse-sr is built for the uses named in the SIH problem statement: crop monitoring, urban analysis, water
@@ -1507,6 +1546,10 @@ r = model.super_resolve("scene.tif", progress=on_tile)
 ---
 
 <!-- method.md -->
+
+---
+description: How SYNAPSE-SR works: a Sentinel-2 camera model, a Tikhonov physics baseline, a Mamba state-space network constrained to the null space, trust maps and calibrated uncertainty.
+---
 
 # How it works
 

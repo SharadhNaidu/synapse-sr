@@ -63,6 +63,25 @@ r.save("sentinel2_2m.tif")
 
 Worked examples: [Applications](applications.md).
 
+## Benchmarks
+
+![Official Sentinel-2 super-resolution benchmark](assets/benchmark-light.png#only-light)
+![Official Sentinel-2 super-resolution benchmark](assets/benchmark-dark.png#only-dark)
+
+Official [opensr-test](https://github.com/ESAOpenSR/opensr-test) protocol: Sentinel-2 L2A input, harmonised
+high-resolution references, mean over five datasets (NAIP, SPOT, Spain urban, Spain crops, VENµS; 178 scenes),
+synapse-sr 0.4.1 defaults. SYNAPSE is best on five of the seven measures.
+
+| Model | Improvement ↑ | Omission ↓ | Hallucination ↓ | Detail corr. ↑ | RMSE ↓ | Spectral error ↓ | Reflectance error ↓ |
+|---|---|---|---|---|---|---|---|
+| **SYNAPSE Flash** | 0.155 | 0.748 | 0.097 | **0.300** | **0.0234** | 0.401 | 0.0018 |
+| **SYNAPSE Pro** | **0.199** | 0.631 | 0.171 | 0.289 | 0.0254 | **0.223** | **0.0011** |
+| SEN2SR | 0.150 | 0.759 | 0.091 | 0.284 | 0.0235 | 0.665 | 0.0025 |
+| SEN2SR-Lite | 0.152 | 0.749 | 0.099 | 0.290 | **0.0234** | 0.463 | 0.0019 |
+| LDSR-S2 | 0.197 | 0.599 | 0.204 | 0.206 | 0.0240 | 1.015 | 0.0036 |
+| Satlas ESRGAN | 0.129 | **0.181** | 0.690 | 0.089 | 0.0443 | 7.787 | 0.0242 |
+| Bicubic | 0.102 | 0.830 | **0.068** | 0.279 | **0.0234** | 0.601 | 0.0028 |
+
 ## Flash or Pro
 
 | | **Flash** (default) | **Pro** |
