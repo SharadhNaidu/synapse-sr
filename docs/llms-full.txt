@@ -445,7 +445,8 @@ torch tensors `(C, H, W)` and xarray `DataArray`s with a `band` coordinate work 
 | `offset=-1000` | radiometric offset for raw baseline 04.00+ DN without a tag |
 | `tile=`, `batch=` | override the automatic memory-aware tiling |
 | `progress=False` | silence the progress bar (`SYNAPSE_SR_QUIET=1` everywhere) |
-| `discrepancy=4` | how tightly the physics fits the measurement, in sensor-noise units |
+| `discrepancy=` | how tightly the physics fits the measurement, in sensor-noise units (Pro 0.5, Flash 4) |
+| `restore_mean=` | restore each 10 m pixel's measured mean reflectance (Flash: on, Pro: off) |
 
 
 ---
@@ -568,9 +569,17 @@ pro = Pro.from_pretrained()                       # most detail; best on a GPU
 `Pro.from_pretrained(weights=...)` also accepts a Flash checkpoint and returns a `Flash` object, so code that
 loads local files does not need to know which kind of checkpoint it has.
 
-On the official opensr-test benchmark (README) the two score within a few thousandths of each other; Flash was
-trained to reproduce Pro's output (knowledge distillation) on real Sentinel-2 / NAIP pairs, a streamed NAIP corpus
-and ISRO Cartosat-derived pairs.
+Flash was trained to reproduce Pro's output (knowledge distillation) on real Sentinel-2 / NAIP pairs, a streamed NAIP
+corpus and ISRO Cartosat-derived pairs. The two ship with different physics defaults, and on the official opensr-test
+benchmark (README) each leads different columns:
+
+| | Flash default | Pro default |
+|---|---|---|
+| Physics fit (`discrepancy`) | 4 noise units: absorbs forward-model error | 0.5: tight fit, the most recovered detail |
+| `restore_mean` | on: each 10 m pixel's measured mean reflectance restored exactly | off |
+| Leads on | detail correlation, RMSE | improvement, spectral and reflectance error |
+
+Both are arguments of `super_resolve`, so either model can run with the other's settings.
 
 ## Test-time augmentation
 
@@ -802,12 +811,12 @@ per band, in units of that band's noise level:
 {"B04": 5.7, "B03": 3.5, "B02": 3.0, "B08": 3.2}
 ```
 
-The physics baseline deliberately fits the measurement to about 4 noise units, not 1: a real scene also carries
-forward-model error (point-spread function, registration), and fitting it to sensor noise alone turns that error into
-false fine detail. Because one regularisation weight is shared by all bands, individual bands can sit a few units
-above or below 4. Values far beyond that (above 5 x `discrepancy`) trigger a warning: check the band order, the
-radiometric offset and that the input is L2A on the 10 m grid. `super_resolve(..., discrepancy=1)` fits to sensor
-noise alone. The learned detail itself is invisible to this measurement by construction (it lies in the null space).
+How tightly the physics baseline fits the measurement is set by `discrepancy`, in noise units. Pro fits tightly
+(0.5, the most recovered detail). Flash fits to about 4 units, which absorbs forward-model error (point-spread function,
+registration) instead of turning it into fine detail, and then restores every 10 m pixel's mean reflectance exactly
+with a smooth correction (`restore_mean`), so its values here are typically 5 to 15. Because one regularisation weight
+is shared by all bands, individual bands can sit a few units apart. Values above 20 trigger a warning: check the band
+order, the radiometric offset and that the input is L2A on the 10 m grid. The learned detail itself is invisible to this measurement by construction (it lies in the null space).
 The measurement is taken on the assembled mosaic, so tiling seams would show up here.
 
 
@@ -1070,11 +1079,11 @@ x = torch.tensor(r.image)[None]
 A = model.op.cpu()
 (o, q), (o2, q2) = A.block(x.shape[-2]), A.block(x.shape[-1])
 resid = A(x) - y[..., o:o + q, o2:o2 + q2]
-print((resid.pow(2).mean((0, 2, 3)).sqrt() / baseline.tau_for(A)).tolist())   # a few noise units (default fit: 4)
+print((resid.pow(2).mean((0, 2, 3)).sqrt() / baseline.tau_for(A)).tolist())   # a few noise units
 ```
 
-A few noise units means the output agrees with the satellite measurement to within noise plus modelling error (the
-default fit is 4 units; `discrepancy=1` fits to sensor noise alone). A generic
+A few noise units means the output agrees with the satellite measurement to within noise plus modelling error (Pro
+fits to about 0.5 units, Flash to about 4 before its mean-reflectance restore). A generic
 upsampler or GAN has no such constraint. Run the same check on `bicubic = torch.nn.functional.interpolate(y, scale_factor=5, mode="bicubic")`
 to compare.
 
@@ -1508,7 +1517,7 @@ x_hat = x_base + P_N(delta)
 | Component | Role |
 |---|---|
 | `A` | Sentinel-2 forward operator: per-band point-spread function on a 0.5 m grid, sampled at source-pixel centres |
-| `x_base` | deterministic baseline: bicubic anchor corrected by Tikhonov regularisation. One regularisation weight is shared by all four bands (so every band is sharpened equally) and set by the Morozov discrepancy principle for a total noise of 4x the L2A sensor noise, which absorbs forward-model error (point-spread function, registration). `super_resolve(discrepancy=1)` fits to sensor noise alone |
+| `x_base` | deterministic baseline: bicubic anchor corrected by Tikhonov regularisation. One regularisation weight is shared by all four bands (so every band is sharpened equally) and set by the Morozov discrepancy principle (`discrepancy`, in units of the L2A sensor noise: 0.5 for Pro, a tight fit; 4 for Flash, which absorbs forward-model error such as point-spread function and registration). Flash then restores each 10 m pixel's measured mean reflectance with a smooth bicubic correction (`restore_mean`), counted in `x_base` |
 | `delta` | structural correction predicted by the network |
 | `P_N` | projector onto the null space of `A`, `I - A^T (A A^T)^+ A`: removes every component the sensor could have observed |
 
@@ -1672,6 +1681,26 @@ the `synapse-sr --env` output.
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
+
+## [0.4.1] - 2026-09-28
+
+### Changed
+
+- **Benchmark: SYNAPSE is now best on five of the seven official opensr-test columns** (means over NAIP, SPOT,
+  Spain-urban, Spain-crops, VENuS; 178 scenes). Pro: improvement 0.199, spectral error 0.223, reflectance error 0.0011.
+  Flash: detail correlation 0.300, RMSE 0.0234.
+- Flash restores each 10 m pixel's measured mean reflectance with a smooth bicubic correction after the physics
+  projection (`super_resolve(..., restore_mean=True)`, its new default). The correction is counted in `x_base`, so
+  `prior` is still exactly the network's contribution.
+- Pro fits the measurement tightly by default (`discrepancy=0.5`) for the most recovered detail. `discrepancy=4,
+  restore_mean=False` reproduces 0.4.0 for either model.
+- Both checkpoints recalibrated for the new defaults: Pro 82 / 91 / 96 % and Flash 82 / 91 / 95 % coverage at
+  80 / 90 / 95 % on held-out references.
+
+### Fixed
+
+- Intel Macs: numpy is pinned below 2 there, because the last PyTorch built for Intel macOS (2.2.2) needs numpy 1.
+  Continuous integration now runs the published-weights suite on an Intel Mac runner.
 
 ## [0.4.0] - 2026-09-28
 

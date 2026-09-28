@@ -26,7 +26,7 @@ from synapse_sr.result import Result
 
 SCALE = 5
 SCL_INVALID = (0, 1, 3, 8, 9, 10)          # no data, saturated/defective, cloud shadow, cloud medium/high, cirrus
-DISCREPANCY = 4.0                           # tau units; see super_resolve(discrepancy=)
+DISCREPANCY = 4.0                           # tau units; Flash default, see super_resolve(discrepancy=)
 CLAMP = (0.0, 1.5)                          # physical reflectance range of the output
 SUPPORT_T = (3.0, 10.0)                    # |prior| / tau_b: below 3 HIGH, 3-10 MEDIUM, above LOW (heuristic)
 
@@ -88,6 +88,7 @@ class Pro:
     """
 
     scale = SCALE
+    DEFAULTS = {"discrepancy": 0.5, "restore_mean": False}   # maximum detail: fit the measurement tightly
 
     def __init__(self, model: SynapseProX5, op: S2Forward, device: Union[str, torch.device] = "cpu",
                  meta: Optional[dict] = None):
@@ -220,7 +221,8 @@ class Pro:
                       offset: Optional[float] = None, tile: Optional[int] = None, halo: Optional[int] = None,
                       context: bool = True, batch: Optional[int] = None,
                       progress: Union[bool, str, Callable[[int, int], None]] = "auto",
-                      discrepancy: float = DISCREPANCY, tta: bool = False) -> Result:
+                      discrepancy: Optional[float] = None, tta: bool = False,
+                      restore_mean: Optional[bool] = None) -> Result:
         """Super-resolve one Sentinel-2 scene.
 
         Parameters
@@ -242,11 +244,9 @@ class Pro:
             Added to DN before dividing by 10000 (``-1000`` for L2A processing baseline 04.00 and later).
             ``None`` (default) reads the GeoTIFF ``BOA_ADD_OFFSET`` tag, else 0. Ignored for reflectance input.
         discrepancy:
-            How closely the physics baseline fits the measurement, in units of the Sentinel-2 L2A noise level:
-            the total noise it must absorb is sensor noise plus forward-model error (PSF and registration). The
-            default 4 was selected on the NAIP and SPOT opensr-test sets and confirmed on Spain-urban, Spain-crops
-            and VENuS: against 1 it cuts hallucinated detail and spectral-angle error substantially at a small cost in
-            added detail. ``1`` reproduces the strict sensor-noise fit of 0.3.0.
+            How closely the physics baseline fits the measurement, in units of the Sentinel-2 L2A noise level.
+            Pro defaults to 0.5 (tight fit, the most recovered detail); Flash to 4 (a looser fit that absorbs
+            forward-model error, with fewer spurious edges). ``4`` on Pro reproduces 0.4.0.
         tile, halo:
             Source-pixel tile size and context halo. By default the largest tile (and batch) that fits the free GPU
             memory, or a 6 GB RAM budget on CPU, is chosen: larger tiles waste less computation on the halo.
@@ -259,6 +259,11 @@ class Pro:
         context:
             Carry the six native 20 m bands (B05 B06 B07 B8A B11 B12) onto the output grid by pixel replication,
             so red-edge and SWIR indices (NDRE, NDBI, NBR, MNDWI) are available. They are NOT super-resolved.
+        restore_mean:
+            Make every 10 m pixel's mean reflectance equal the measurement with a smooth (bicubic) correction that
+            adds no fine structure; it is counted in ``x_base``, not ``prior``. On by default for Flash (lower spectral
+            and reflectance error, higher detail correlation); off by default for Pro, whose tight fit already
+            matches the measurement.
 
         Returns
         -------
@@ -266,17 +271,20 @@ class Pro:
             2.0 m RGBN image with error-scale map, support classes, validity mask, consistency and the
             observed / inferred decomposition.
         """
+        discrepancy = self.DEFAULTS["discrepancy"] if discrepancy is None else discrepancy
+        restore_mean = self.DEFAULTS["restore_mean"] if restore_mean is None else restore_mean
         show = progress is True or (progress == "auto" and ui.interactive())
         callback = progress if callable(progress) else None
         t0 = time.time()
         with (ui.RunProgress(type(self).__name__) if show else contextlib.nullcontext()) as bar:
-            r = self._run(src, band_names, scl, nodata, offset, tile, halo, context, batch, bar, callback, discrepancy, tta)
+            r = self._run(src, band_names, scl, nodata, offset, tile, halo, context, batch, bar, callback, discrepancy, tta,
+                          restore_mean)
         r.metadata["seconds"] = round(time.time() - t0, 3)
         if show:
             bar.done(r, r.metadata["seconds"])
         return r
 
-    def _run(self, src, band_names, scl, nodata, offset, tile, halo, context, batch, bar, callback, discrepancy, tta):
+    def _run(self, src, band_names, scl, nodata, offset, tile, halo, context, batch, bar, callback, discrepancy, tta, restore_mean):
         if bar:
             bar.stage("reading input")
         profile, tags = None, {}
@@ -368,6 +376,11 @@ class Pro:
                 if callback:
                     callback(len(wins), len(jobs))
 
+        if restore_mean:                                  # smooth, measurement-derived: part of the baseline, not the prior
+            vm = torch.tensor(valid, device=self.device)[None, None]
+            xr = baseline.restore_mean(x, y4, vm)
+            base = base + (xr - x)
+            x = xr
         if bar:
             bar.stage("checking observation consistency")
         tau = baseline.tau_for(self.op)
@@ -386,7 +399,7 @@ class Pro:
             num += (r.pow(2) * m).sum((0, 2, 3))
             cnt += float(m.sum())
         rms = (num / cnt).sqrt() / tau if cnt > 0 else torch.full((4,), float("nan"), device=self.device)
-        bad = [b for b, v in zip(self.op.bands, rms.tolist()) if v > 5.0 * discrepancy]   # common lambda: up to ~3x
+        bad = [b for b, v in zip(self.op.bands, rms.tolist()) if v > 5.0 * max(discrepancy, DISCREPANCY)]
         if bad:
             warnings.warn(f"the output disagrees with the input beyond sensor noise in {bad} (RMS well above the {discrepancy:g} tau target): check the "
                           f"band order, the radiometric offset and that the input is Sentinel-2 L2A on the 10 m grid",
@@ -401,7 +414,7 @@ class Pro:
         gsd = abs(profile["transform"].a) / SCALE if profile else 10.0 / SCALE
         meta = {"scale": SCALE, "model": self.meta.get("name", "local"), "scan_backend": kind,
                 "precision": "bfloat16" if amp is not None else "float32", "tile": tile, "halo": halo,
-                "lambda": lam.tolist(), "discrepancy_tau": discrepancy, "tta": bool(tta), "bands": list(self.op.bands),
+                "lambda": lam.tolist(), "discrepancy_tau": discrepancy, "tta": bool(tta), "restore_mean": bool(restore_mean), "bands": list(self.op.bands),
                 "support_classes": {"2": "HIGH: observation-determined", "1": "MEDIUM",
                                     "0": "LOW: prior-dominated or invalid input", "thresholds_tau": SUPPORT_T},
                 "invalid_input_fraction": float(1 - valid.mean()),
@@ -429,6 +442,8 @@ class Flash(Pro):
                         device: Optional[Union[str, torch.device]] = None) -> "Flash":
         """Load a SYNAPSE Flash checkpoint; arguments as :meth:`Pro.from_pretrained`."""
         return super().from_pretrained(name, weights, device)
+
+    DEFAULTS = {"discrepancy": DISCREPANCY, "restore_mean": True}
 
     def _backend(self, y):
         return "cnn"

@@ -158,3 +158,23 @@ def morozov_lambda_batched(op, x_bic, y_block, tau, n_bisect=16, lo=-9.0, hi=2.0
     with torch.no_grad():
         r0 = (op(x_bic) - y_block).pow(2).mean(dim=(-2, -1)).sqrt()
     return torch.where(r0 <= tau, torch.full_like(lam, NO_CORRECTION), lam)
+
+
+def restore_mean(x, y, valid=None, iters=3, rows=256):
+    """Restore the measured 10 m mean reflectance: x <- x + U(y - M x), with M the 5 x 5 block mean and U bicubic
+    interpolation, so the correction is smooth and adds no fine structure. Solved in row strips with a halo covering
+    the correction's reach, for bounded memory on large scenes."""
+    s = x.shape[-2] // y.shape[-2]
+    m = torch.ones_like(y[:, :1]) if valid is None else valid.to(y.dtype)
+    halo = 2 * iters + 2
+    out = torch.empty_like(x)
+    for r in range(0, y.shape[-2], rows):
+        r0, r1 = max(r - halo, 0), min(r + rows + halo, y.shape[-2])
+        xs, ys = x[..., s * r0:s * r1, :], y[..., r0:r1, :]
+        ms = m[..., r0:r1, :]
+        for _ in range(iters):
+            res = (ys - F.avg_pool2d(xs, s)) * ms
+            xs = xs + F.interpolate(res, scale_factor=s, mode="bicubic", align_corners=False)
+        a = r - r0
+        out[..., s * r:s * min(r + rows, y.shape[-2]), :] = xs[..., s * a:s * (a + min(rows, y.shape[-2] - r)), :]
+    return out

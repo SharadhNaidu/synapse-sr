@@ -7,7 +7,7 @@ x_hat = x_base + P_N(delta)
 | Component | Role |
 |---|---|
 | `A` | Sentinel-2 forward operator: per-band point-spread function on a 0.5 m grid, sampled at source-pixel centres |
-| `x_base` | deterministic baseline: bicubic anchor corrected by Tikhonov regularisation. One regularisation weight is shared by all four bands (so every band is sharpened equally) and set by the Morozov discrepancy principle for a total noise of 4x the L2A sensor noise, which absorbs forward-model error (point-spread function, registration). `super_resolve(discrepancy=1)` fits to sensor noise alone |
+| `x_base` | deterministic baseline: bicubic anchor corrected by Tikhonov regularisation. One regularisation weight is shared by all four bands (so every band is sharpened equally) and set by the Morozov discrepancy principle (`discrepancy`, in units of the L2A sensor noise: 0.5 for Pro, a tight fit; 4 for Flash, which absorbs forward-model error such as point-spread function and registration). Flash then restores each 10 m pixel's measured mean reflectance with a smooth bicubic correction (`restore_mean`), counted in `x_base` |
 | `delta` | structural correction predicted by the network |
 | `P_N` | projector onto the null space of `A`, `I - A^T (A A^T)^+ A`: removes every component the sensor could have observed |
 

@@ -26,9 +26,17 @@ pro = Pro.from_pretrained()                       # most detail; best on a GPU
 `Pro.from_pretrained(weights=...)` also accepts a Flash checkpoint and returns a `Flash` object, so code that
 loads local files does not need to know which kind of checkpoint it has.
 
-On the official opensr-test benchmark (README) the two score within a few thousandths of each other; Flash was
-trained to reproduce Pro's output (knowledge distillation) on real Sentinel-2 / NAIP pairs, a streamed NAIP corpus
-and ISRO Cartosat-derived pairs.
+Flash was trained to reproduce Pro's output (knowledge distillation) on real Sentinel-2 / NAIP pairs, a streamed NAIP
+corpus and ISRO Cartosat-derived pairs. The two ship with different physics defaults, and on the official opensr-test
+benchmark (README) each leads different columns:
+
+| | Flash default | Pro default |
+|---|---|---|
+| Physics fit (`discrepancy`) | 4 noise units: absorbs forward-model error | 0.5: tight fit, the most recovered detail |
+| `restore_mean` | on: each 10 m pixel's measured mean reflectance restored exactly | off |
+| Leads on | detail correlation, RMSE | improvement, spectral and reflectance error |
+
+Both are arguments of `super_resolve`, so either model can run with the other's settings.
 
 ## Test-time augmentation
 

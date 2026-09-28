@@ -129,4 +129,5 @@ torch tensors `(C, H, W)` and xarray `DataArray`s with a `band` coordinate work 
 | `offset=-1000` | radiometric offset for raw baseline 04.00+ DN without a tag |
 | `tile=`, `batch=` | override the automatic memory-aware tiling |
 | `progress=False` | silence the progress bar (`SYNAPSE_SR_QUIET=1` everywhere) |
-| `discrepancy=4` | how tightly the physics fits the measurement, in sensor-noise units |
+| `discrepancy=` | how tightly the physics fits the measurement, in sensor-noise units (Pro 0.5, Flash 4) |
+| `restore_mean=` | restore each 10 m pixel's measured mean reflectance (Flash: on, Pro: off) |

@@ -47,11 +47,11 @@ x = torch.tensor(r.image)[None]
 A = model.op.cpu()
 (o, q), (o2, q2) = A.block(x.shape[-2]), A.block(x.shape[-1])
 resid = A(x) - y[..., o:o + q, o2:o2 + q2]
-print((resid.pow(2).mean((0, 2, 3)).sqrt() / baseline.tau_for(A)).tolist())   # a few noise units (default fit: 4)
+print((resid.pow(2).mean((0, 2, 3)).sqrt() / baseline.tau_for(A)).tolist())   # a few noise units
 ```
 
-A few noise units means the output agrees with the satellite measurement to within noise plus modelling error (the
-default fit is 4 units; `discrepancy=1` fits to sensor noise alone). A generic
+A few noise units means the output agrees with the satellite measurement to within noise plus modelling error (Pro
+fits to about 0.5 units, Flash to about 4 before its mean-reflectance restore). A generic
 upsampler or GAN has no such constraint. Run the same check on `bicubic = torch.nn.functional.interpolate(y, scale_factor=5, mode="bicubic")`
 to compare.
 

@@ -313,3 +313,22 @@ def test_cli_folder_and_preview(flash, tmp_path):
     assert cli([str(src / "a.tif"), str(tmp_path / "o.tif"), "--weights", w, "--device", "cpu", "--quiet",
                 "--preview", str(tmp_path / "p.png"), "--cog"]) == 0
     assert (tmp_path / "p.png").exists()
+
+
+def test_restore_mean_matches_the_measurement_and_is_strip_invariant(flash, model):
+    assert Flash.DEFAULTS == {"discrepancy": 4.0, "restore_mean": True}
+    assert Pro.DEFAULTS["restore_mean"] is False and model.DEFAULTS["discrepancy"] == 0.5
+    arr = scene(40, 40, seed=7)
+    y = torch.tensor(arr[[3, 2, 1, 7]].astype(np.float32) / 1e4)
+    core = (slice(None), slice(4, -4), slice(4, -4))
+
+    def mean_err(r):
+        return float((F.avg_pool2d(torch.tensor(r.image)[None], 5)[0] - y)[core].abs().max())
+    on = flash.super_resolve(arr, band_names=S2_12)
+    off = flash.super_resolve(arr, band_names=S2_12, restore_mean=False)
+    assert on.metadata["restore_mean"] and on.metadata["discrepancy_tau"] == 4.0
+    assert mean_err(on) < 0.5 * mean_err(off)
+    assert np.allclose(on.prior, off.prior, atol=1e-5)                    # the correction belongs to x_base
+    x = torch.rand(1, 4, 200, 60)
+    ym = torch.rand(1, 4, 40, 12)
+    assert torch.allclose(baseline.restore_mean(x, ym, rows=7), baseline.restore_mean(x, ym), atol=1e-5)

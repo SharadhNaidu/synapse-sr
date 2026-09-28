@@ -56,16 +56,17 @@ Spain crops, VENµS; 178 scenes). Every model at its native scale, compared on t
 
 | Model | Improvement ↑ | Omission ↓ | Hallucination ↓ | Detail corr. ↑ | RMSE ↓ | Spectral error ↓ | Reflectance error ↓ |
 |---|---|---|---|---|---|---|---|
-| **SYNAPSE Flash** | 0.148 | 0.756 | 0.096 | **0.298** | 0.0237 | **0.427** | **0.0019** |
-| **SYNAPSE Pro** | 0.152 | 0.750 | 0.098 | 0.297 | 0.0237 | 0.428 | **0.0019** |
+| **SYNAPSE Flash** | 0.155 | 0.748 | 0.097 | **0.300** | **0.0234** | 0.401 | 0.0018 |
+| **SYNAPSE Pro** | **0.199** | 0.631 | 0.171 | 0.289 | 0.0254 | **0.223** | **0.0011** |
 | SEN2SR | 0.150 | 0.759 | 0.091 | 0.284 | 0.0235 | 0.665 | 0.0025 |
-| SEN2SR-Lite | 0.152 | 0.749 | 0.099 | 0.290 | **0.0234** | 0.463 | **0.0019** |
-| LDSR-S2 | **0.197** | 0.599 | 0.204 | 0.206 | 0.0240 | 1.015 | 0.0036 |
+| SEN2SR-Lite | 0.152 | 0.749 | 0.099 | 0.290 | **0.0234** | 0.463 | 0.0019 |
+| LDSR-S2 | 0.197 | 0.599 | 0.204 | 0.206 | 0.0240 | 1.015 | 0.0036 |
 | Satlas ESRGAN | 0.129 | **0.181** | 0.690 | 0.089 | 0.0443 | 7.787 | 0.0242 |
 | Bicubic | 0.102 | 0.830 | **0.068** | 0.279 | **0.0234** | 0.601 | 0.0028 |
 
-**Best** in bold. SYNAPSE runs with the package defaults (`synapse_sr.super_resolve`). Flash processes a 1.28 km scene
-in about 1 s on a laptop CPU; Pro in about 5 s on a GPU.
+**Best** in bold. SYNAPSE runs with the package defaults (`synapse_sr.super_resolve`). SYNAPSE is best on five of the
+seven columns: Pro on improvement, spectral and reflectance error, Flash on detail correlation and (tied) RMSE. Flash processes
+a 1.28 km scene in about 1 s on a laptop CPU; Pro in about 5 s on a GPU.
 
 ## What it is for
 
@@ -87,10 +88,11 @@ Worked examples for each: [Applications](https://sharadhnaidu.github.io/synapse-
 | Runs on | any CPU, laptops, integrated graphics, Apple silicon, ARM, any GPU | GPU recommended; CPU works, slower |
 | Choose it | `synapse_sr.super_resolve(src)` | `synapse_sr.super_resolve(src, model="pro")` |
 | Load | `Flash.from_pretrained()` | `Pro.from_pretrained()` |
+| Tuned for | balanced fidelity: best detail correlation, lowest RMSE (tied), measured 10 m mean reflectance restored exactly | maximum detail: best improvement, spectral and reflectance error |
 | Physics, support map, calibrated uncertainty | yes | yes |
 
-Both run the same observation-consistent pipeline and score within a whisker of each other on the benchmark above.
-Use **Flash** for speed and anywhere-deployment, **Pro** for the most detail on a GPU. `synapse-sr --models` lists
+Both run the same observation-consistent pipeline. Use **Flash** for speed, anywhere-deployment and the most faithful
+output, **Pro** for the most recovered detail on a GPU. `synapse-sr --models` lists
 every published checkpoint.
 
 ## Why trust the output

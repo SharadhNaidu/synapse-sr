@@ -64,11 +64,11 @@ per band, in units of that band's noise level:
 {"B04": 5.7, "B03": 3.5, "B02": 3.0, "B08": 3.2}
 ```
 
-The physics baseline deliberately fits the measurement to about 4 noise units, not 1: a real scene also carries
-forward-model error (point-spread function, registration), and fitting it to sensor noise alone turns that error into
-false fine detail. Because one regularisation weight is shared by all bands, individual bands can sit a few units
-above or below 4. Values far beyond that (above 5 x `discrepancy`) trigger a warning: check the band order, the
-radiometric offset and that the input is L2A on the 10 m grid. `super_resolve(..., discrepancy=1)` fits to sensor
-noise alone. The learned detail itself is invisible to this measurement by construction (it lies in the null space).
+How tightly the physics baseline fits the measurement is set by `discrepancy`, in noise units. Pro fits tightly
+(0.5, the most recovered detail). Flash fits to about 4 units, which absorbs forward-model error (point-spread function,
+registration) instead of turning it into fine detail, and then restores every 10 m pixel's mean reflectance exactly
+with a smooth correction (`restore_mean`), so its values here are typically 5 to 15. Because one regularisation weight
+is shared by all bands, individual bands can sit a few units apart. Values above 20 trigger a warning: check the band
+order, the radiometric offset and that the input is L2A on the 10 m grid. The learned detail itself is invisible to this measurement by construction (it lies in the null space).
 The measurement is taken on the assembled mosaic, so tiling seams would show up here.
 

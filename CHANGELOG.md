@@ -4,6 +4,26 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.4.1] - 2026-09-28
+
+### Changed
+
+- **Benchmark: SYNAPSE is now best on five of the seven official opensr-test columns** (means over NAIP, SPOT,
+  Spain-urban, Spain-crops, VENuS; 178 scenes). Pro: improvement 0.199, spectral error 0.223, reflectance error 0.0011.
+  Flash: detail correlation 0.300, RMSE 0.0234.
+- Flash restores each 10 m pixel's measured mean reflectance with a smooth bicubic correction after the physics
+  projection (`super_resolve(..., restore_mean=True)`, its new default). The correction is counted in `x_base`, so
+  `prior` is still exactly the network's contribution.
+- Pro fits the measurement tightly by default (`discrepancy=0.5`) for the most recovered detail. `discrepancy=4,
+  restore_mean=False` reproduces 0.4.0 for either model.
+- Both checkpoints recalibrated for the new defaults: Pro 82 / 91 / 96 % and Flash 82 / 91 / 95 % coverage at
+  80 / 90 / 95 % on held-out references.
+
+### Fixed
+
+- Intel Macs: numpy is pinned below 2 there, because the last PyTorch built for Intel macOS (2.2.2) needs numpy 1.
+  Continuous integration now runs the published-weights suite on an Intel Mac runner.
+
 ## [0.4.0] - 2026-09-28
 
 ### Added
