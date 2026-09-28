@@ -112,9 +112,6 @@ references are from the United States.
   url    = {https://github.com/SharadhNaidu/synapse-sr}
 }
 ```
-
-- The Mamba backbone and the Flash building blocks derive from [SEN2SR](https://github.com/ESAOpenSR/SEN2SR)
-  (ESA OpenSR, CC0-1.0); see `THIRD_PARTY_NOTICES`.
 - The optional fused kernel comes from [mamba-ssm](https://github.com/state-spaces/mamba) (Apache-2.0).
 - Sentinel-2 data: Copernicus programme, European Space Agency.
 
