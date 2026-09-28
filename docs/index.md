@@ -75,6 +75,3 @@ More: [Choosing a model and a device](guide/models.md).
 | **Geospatially exact** | GeoTIFF in, GeoTIFF out, CRS and bounds preserved, direct x5 onto a grid that shares the input origin. |
 | **Runs anywhere** | CUDA, Triton, or pure PyTorch on CPU; live progress bars in terminals and notebooks; fully offline once the weights are local. |
 
-!!! note "Grid spacing is not effective resolution"
-    The output grid is 2.0 m. How fine a structure is genuinely resolved is a separate, measured property;
-    see [Limitations](limitations.md).

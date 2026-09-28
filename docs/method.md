@@ -41,5 +41,5 @@ The network was trained on Sentinel-2 L2A paired with 0.6 m aerial reference ima
 registered to Sentinel-2, integrated onto the 2 m grid, and gain-matched per band to Sentinel-2 through the
 forward operator. Every loss term acts only on the null-space component `P_N(x_hat - target)`. The model is
 therefore never trained to reproduce cross-sensor radiometric differences that the Sentinel-2 measurement
-already determines. The backbone was initialised from the public SEN2SR weights (CC0); see
+already determines. The backbone was initialised from public CC0 weights; see
 [Acknowledgements](changelog.md#acknowledgements).

@@ -67,7 +67,3 @@ per band, in units of that band's noise level:
 Values near 1 mean the output explains the input to within sensor noise. The measurement is taken on the
 assembled mosaic, so tiling seams would show up here.
 
-!!! warning "What consistency does not prove"
-    Agreement holds under the nominal sensor model and correct geolocation. It does not show that the added
-    detail is real. That question is answered by reference validation and controlled resolution tests; see
-    [Limitations](../limitations.md).

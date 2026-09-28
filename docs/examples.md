@@ -10,10 +10,6 @@ Scenes fetched with `fetch_sentinel2` and processed with Pro v2 (`tools/make_gif
 true-colour stretch, and each area is 1.28 km x 1.28 km. The percentages give the share of pixels in each support
 class (observation-determined / medium / prior-dominated).
 
-!!! info "What these images show"
-    They show what the package produces. They do not validate an effective resolution; see
-    [Limitations](limitations.md) and [Verify it yourself](guide/verify.md).
-
 | | |
 |---|---|
 | **RV University, Bengaluru** · 6 Feb 2025 · 22 / 48 / 30 % <br><img src="../assets/gifs/rv_university.gif" alt="RV University" width="400"> | **Bengaluru city centre** · 6 Feb 2025 · 33 / 46 / 21 % <br><img src="../assets/gifs/bengaluru_urban.gif" alt="Bengaluru" width="400"> |

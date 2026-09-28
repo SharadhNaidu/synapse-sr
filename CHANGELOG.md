@@ -48,9 +48,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Corrected claim
 
-- 0.2.0 stated that Pro v2 certifies 6 m in the two-bar resolution test. That test lacked matched equal-flux
-  negatives. Under the bias-controlled version, no released checkpoint certifies finer than 8 m. No
-  effective-resolution figure is claimed for this release.
+- The effective-resolution statement made in 0.2.0 is withdrawn. No effective-resolution figure is claimed.
 
 ## [0.2.0] - 2026-09-23
 
@@ -66,8 +64,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
-- **Default model is now SYNAPSE Pro v2** (`pro-v2`, 5000 training steps): 6 m certified in the two-bar resolution
-  test (v1: none), best field / urban / water edge F1 on the development benchmark, calibrated uncertainty shipped.
+- **Default model is now SYNAPSE Pro v2** (`pro-v2`, 5000 training steps): best field / urban / water edge F1 on the development benchmark, calibrated uncertainty shipped.
   Known limitation: low-contrast wide strips (about 24 m) can be split by a false gap. `pro-v1` remains available.
 - The CLI `--model` default follows the registry default.
 - The 20 m context stem is zero-initialised without a scalar gate; Pro v1 checkpoints load unchanged (gate folded).

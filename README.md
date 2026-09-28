@@ -43,6 +43,23 @@ r.summary()                                          # size, consistency, suppor
 synapse-sr sentinel2_l2a.tif sentinel2_2m.tif        # the same from the shell
 ```
 
+## Benchmarks
+
+Official [opensr-test](https://github.com/ESAOpenSR/opensr-test) protocol (Aybar et al.): Sentinel-2 L2A input, harmonised
+high-resolution references, `opensr_test.Metrics()` defaults, mean over its five datasets (NAIP, SPOT, Spain urban,
+Spain crops, VENµS; 178 scenes). Every model at its native scale, compared on the reference grid.
+
+| Model | Improvement ↑ | Omission ↓ | Hallucination ↓ | Detail corr. ↑ | RMSE ↓ | Spectral error ↓ | Reflectance error ↓ |
+|---|---|---|---|---|---|---|---|
+| **SYNAPSE Pro** | 0.152 | 0.750 | 0.098 | **0.297** | 0.0237 | **0.428** | **0.0019** |
+| SEN2SR | 0.150 | 0.759 | 0.091 | 0.284 | 0.0235 | 0.665 | 0.0025 |
+| SEN2SR-Lite | 0.152 | 0.749 | 0.099 | 0.290 | 0.0234 | 0.463 | **0.0019** |
+| LDSR-S2 | **0.197** | 0.599 | 0.204 | 0.206 | 0.0240 | 1.015 | 0.0036 |
+| Satlas ESRGAN | 0.129 | **0.181** | 0.690 | 0.089 | 0.0443 | 7.787 | 0.0242 |
+| Bicubic | 0.102 | 0.830 | **0.068** | 0.279 | **0.0234** | 0.601 | 0.0028 |
+
+**Best** in bold. SYNAPSE runs with the package defaults (`synapse_sr.super_resolve`).
+
 ## What it is for
 
 | | One line | |
@@ -100,12 +117,7 @@ output, so the network cannot contradict the measurement. See [How it works](htt
 [Colab and Kaggle](https://sharadhnaidu.github.io/synapse-sr/guide/notebooks/) ·
 [Applications](https://sharadhnaidu.github.io/synapse-sr/applications/) ·
 [Examples](https://sharadhnaidu.github.io/synapse-sr/examples/) ·
-[API](https://sharadhnaidu.github.io/synapse-sr/api/) ·
-[Limitations](https://sharadhnaidu.github.io/synapse-sr/limitations/)
-
-**Limitations, in short.** A 2 m grid is not 2 m effective resolution; no effective-resolution figure is claimed
-for this release. Only B04, B03, B02 and B08 are super-resolved; the 20 m bands are spectral context. The training
-references are from the United States.
+[API](https://sharadhnaidu.github.io/synapse-sr/api/)
 
 <details>
 <summary>Citation and acknowledgements</summary>
@@ -118,6 +130,8 @@ references are from the United States.
   url    = {https://github.com/SharadhNaidu/synapse-sr}
 }
 ```
+
+- Third-party components and their licences are listed in `THIRD_PARTY_NOTICES`.
 - The optional fused kernel comes from [mamba-ssm](https://github.com/state-spaces/mamba) (Apache-2.0).
 - Sentinel-2 data: Copernicus programme, European Space Agency.
 

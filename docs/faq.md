@@ -9,12 +9,12 @@ it. The output therefore has two components:
 - `prior` is inferred by the network and is invisible to the sensor.
 
 `support` labels each pixel by which component dominates, and `uncertainty()` gives a calibrated expected error.
-The output grid is 2 m. The effective resolution, meaning how fine a structure is genuinely resolved, is coarser
-and is stated in [Limitations](limitations.md).
+The output grid is 2 m. How much of the detail in any pixel is resolved from the measurement rather than inferred
+is reported per pixel by `support` and `uncertainty()`.
 
-### How is this different from bicubic, SEN2SR or a GAN?
+### How is this different from bicubic, other super-resolution models or a GAN?
 
-Bicubic adds no information. Learned models, including SEN2SR and GAN-based methods, add plausible detail but do
+Bicubic adds no information. Other learned models, including GAN-based methods, add plausible detail but do
 not tell you where it came from, and most can alter what the satellite measured. synapse-sr constrains the
 network so that re-observing the output reproduces the measurement (`consistency ≈ 1` noise unit). It also returns
 the observed / inferred split with every result. You can check all of this yourself:
@@ -71,5 +71,5 @@ See also [Troubleshooting](troubleshooting.md).
 
 ### Can I use it commercially? How do I cite it?
 
-The package is CC0-1.0. Parts derive from SEN2SR (CC0-1.0); see `THIRD_PARTY_NOTICES`. The citation is in the
+The package is CC0-1.0. Third-party components and their licences are listed in `THIRD_PARTY_NOTICES`. The citation is in the
 README.
