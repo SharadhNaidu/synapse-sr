@@ -1,3 +1,7 @@
+---
+description: Install SYNAPSE-SR (synapse-sr) with pip on Windows, macOS, Linux, Google Colab or Kaggle, CPU or GPU. Sentinel-2 super-resolution in Python.
+---
+
 # Installation
 
 ## Requirements

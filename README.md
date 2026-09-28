@@ -1,9 +1,11 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/SharadhNaidu/synapse-sr/main/docs/assets/logo-wordmark-dark.svg">
-    <img src="https://raw.githubusercontent.com/SharadhNaidu/synapse-sr/main/docs/assets/logo-wordmark-card.png" alt="synapse-sr" width="440">
+    <img src="https://raw.githubusercontent.com/SharadhNaidu/synapse-sr/main/docs/assets/logo-wordmark-card.png" alt="SYNAPSE-SR, Sentinel-2 super-resolution" width="440">
   </picture>
 </p>
+
+<h1 align="center">SYNAPSE-SR: Sentinel-2 super-resolution to 2 m</h1>
 
 <h3 align="center">Sentinel-2 at 2 m, with every pixel accounted for</h3>
 

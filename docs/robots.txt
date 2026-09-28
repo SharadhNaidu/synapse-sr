@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://sharadhnaidu.github.io/synapse-sr/sitemap.xml

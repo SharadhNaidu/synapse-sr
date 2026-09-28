@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block extrahead %}
+  {% set title = page.meta.title if page and page.meta and page.meta.title else (page.title ~ " - " ~ config.site_name if page and page.title and not page.is_homepage else config.site_name) %}
+  {% set desc = page.meta.description if page and page.meta and page.meta.description else config.site_description %}
+  <meta name="keywords" content="SYNAPSE-SR, synapse-sr, synapse sr, Sentinel-2 super-resolution, Sentinel 2 super resolution python, 2 m resolution, satellite image super-resolution, remote sensing deep learning, Mamba, uncertainty">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="SYNAPSE-SR">
+  <meta property="og:title" content="{{ title }}">
+  <meta property="og:description" content="{{ desc }}">
+  <meta property="og:url" content="{{ page.canonical_url }}">
+  <meta property="og:image" content="{{ config.site_url }}assets/social-card.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ title }}">
+  <meta name="twitter:description" content="{{ desc }}">
+  <meta name="twitter:image" content="{{ config.site_url }}assets/social-card.png">
+  {% if config.extra.google_site_verification %}<meta name="google-site-verification" content="{{ config.extra.google_site_verification }}">{% endif %}
+  {% if page and page.is_homepage %}
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "SYNAPSE-SR",
+    "alternateName": ["synapse-sr", "synapse sr", "SYNAPSE Sentinel-2 super-resolution"],
+    "description": "{{ config.site_description }}",
+    "applicationCategory": "ScientificApplication",
+    "operatingSystem": "Windows, macOS, Linux",
+    "softwareVersion": "{{ config.extra.version }}",
+    "license": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "url": "{{ config.site_url }}",
+    "downloadUrl": "https://pypi.org/project/synapse-sr/",
+    "codeRepository": "https://github.com/SharadhNaidu/synapse-sr",
+    "programmingLanguage": "Python",
+    "keywords": "Sentinel-2, super-resolution, remote sensing, 2 m resolution, deep learning, Mamba, uncertainty",
+    "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
+    "sameAs": ["https://github.com/SharadhNaidu/synapse-sr", "https://pypi.org/project/synapse-sr/",
+               "https://huggingface.co/SharadhNaiduTrains/synapse-sr"]
+  }
+  </script>
+  {% endif %}
+{% endblock %}

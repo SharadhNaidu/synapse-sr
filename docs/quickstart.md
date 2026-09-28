@@ -1,3 +1,7 @@
+---
+description: Super-resolve a Sentinel-2 scene from 10 m to 2 m resolution in three lines of Python with SYNAPSE-SR: GeoTIFF in, georeferenced 2 m GeoTIFF out.
+---
+
 # Quick start
 
 !!! tip "No installation needed to try it"

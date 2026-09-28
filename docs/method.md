@@ -1,3 +1,7 @@
+---
+description: How SYNAPSE-SR works: a Sentinel-2 camera model, a Tikhonov physics baseline, a Mamba state-space network constrained to the null space, trust maps and calibrated uncertainty.
+---
+
 # How it works
 
 ```

@@ -1,3 +1,7 @@
+---
+description: What 2 m Sentinel-2 imagery from SYNAPSE-SR is used for: building detection in Indian cities, field boundaries, flood and water mapping, disaster change detection.
+---
+
 # Applications
 
 synapse-sr is built for the uses named in the SIH problem statement: crop monitoring, urban analysis, water

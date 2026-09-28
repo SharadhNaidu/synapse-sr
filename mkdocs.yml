@@ -1,5 +1,5 @@
-site_name: synapse-sr
-site_description: Observation-consistent super-resolution of Sentinel-2 imagery to a 2 m grid
+site_name: SYNAPSE-SR
+site_description: SYNAPSE-SR (synapse-sr) is an open-source Python package for Sentinel-2 super-resolution from 10 m to 2 m resolution, physics-consistent, with per-pixel trust maps and calibrated uncertainty. pip install synapse-sr
 site_url: https://sharadhnaidu.github.io/synapse-sr/
 repo_url: https://github.com/SharadhNaidu/synapse-sr
 repo_name: SharadhNaidu/synapse-sr
@@ -8,6 +8,7 @@ copyright: synapse-sr is released under CC0-1.0
 
 theme:
   name: material
+  custom_dir: overrides
   logo: assets/logo-dark-bg.svg
   favicon: assets/logo.png
   font:
@@ -89,8 +90,12 @@ markdown_extensions:
   - pymdownx.tabbed: {alternate_style: true}
 
 extra:
+  version: 0.4.1
+  google_site_verification: ""
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/SharadhNaidu/synapse-sr
     - icon: fontawesome/solid/cube
       link: https://huggingface.co/SharadhNaiduTrains/synapse-sr
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/synapse-sr/

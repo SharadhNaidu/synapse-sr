@@ -1,7 +1,14 @@
+---
+title: Sentinel-2 super-resolution to 2 m resolution
+description: SYNAPSE-SR (synapse-sr) turns Sentinel-2 10 m imagery into 2 m resolution GeoTIFFs with a physics-consistent deep-learning model, per-pixel trust maps and calibrated uncertainty. pip install synapse-sr.
+---
+
 <p align="center">
   <img src="assets/logo-wordmark.svg#only-light" alt="synapse-sr" width="440">
   <img src="assets/logo-wordmark-dark.svg#only-dark" alt="synapse-sr" width="440">
 </p>
+
+<h1 align="center">SYNAPSE-SR: Sentinel-2 super-resolution to 2 m</h1>
 
 <p align="center"><b>Sentinel-2 at 2 m, with every pixel accounted for.</b></p>
 
