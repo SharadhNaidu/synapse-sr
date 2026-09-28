@@ -61,9 +61,14 @@ absolute error, and its rank correlation with the actual error is 0.58.
 per band, in units of that band's noise level:
 
 ```python
-{"B04": 0.95, "B03": 0.89, "B02": 0.81, "B08": 1.00}
+{"B04": 5.7, "B03": 3.5, "B02": 3.0, "B08": 3.2}
 ```
 
-Values near 1 mean the output explains the input to within sensor noise. The measurement is taken on the
-assembled mosaic, so tiling seams would show up here.
+The physics baseline deliberately fits the measurement to about 4 noise units, not 1: a real scene also carries
+forward-model error (point-spread function, registration), and fitting it to sensor noise alone turns that error into
+false fine detail. Because one regularisation weight is shared by all bands, individual bands can sit a few units
+above or below 4. Values far beyond that (above 5 x `discrepancy`) trigger a warning: check the band order, the
+radiometric offset and that the input is L2A on the 10 m grid. `super_resolve(..., discrepancy=1)` fits to sensor
+noise alone. The learned detail itself is invisible to this measurement by construction (it lies in the null space).
+The measurement is taken on the assembled mosaic, so tiling seams would show up here.
 

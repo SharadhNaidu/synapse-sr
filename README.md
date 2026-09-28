@@ -51,14 +51,16 @@ Spain crops, VENµS; 178 scenes). Every model at its native scale, compared on t
 
 | Model | Improvement ↑ | Omission ↓ | Hallucination ↓ | Detail corr. ↑ | RMSE ↓ | Spectral error ↓ | Reflectance error ↓ |
 |---|---|---|---|---|---|---|---|
-| **SYNAPSE Pro** | 0.152 | 0.750 | 0.098 | **0.297** | 0.0237 | **0.428** | **0.0019** |
+| **SYNAPSE Flash** | 0.148 | 0.756 | 0.096 | **0.298** | 0.0237 | **0.427** | **0.0019** |
+| **SYNAPSE Pro** | 0.152 | 0.750 | 0.098 | 0.297 | 0.0237 | 0.428 | **0.0019** |
 | SEN2SR | 0.150 | 0.759 | 0.091 | 0.284 | 0.0235 | 0.665 | 0.0025 |
-| SEN2SR-Lite | 0.152 | 0.749 | 0.099 | 0.290 | 0.0234 | 0.463 | **0.0019** |
+| SEN2SR-Lite | 0.152 | 0.749 | 0.099 | 0.290 | **0.0234** | 0.463 | **0.0019** |
 | LDSR-S2 | **0.197** | 0.599 | 0.204 | 0.206 | 0.0240 | 1.015 | 0.0036 |
 | Satlas ESRGAN | 0.129 | **0.181** | 0.690 | 0.089 | 0.0443 | 7.787 | 0.0242 |
 | Bicubic | 0.102 | 0.830 | **0.068** | 0.279 | **0.0234** | 0.601 | 0.0028 |
 
-**Best** in bold. SYNAPSE runs with the package defaults (`synapse_sr.super_resolve`).
+**Best** in bold. SYNAPSE runs with the package defaults (`synapse_sr.super_resolve`). Flash processes a 1.28 km scene
+in about 1 s on a laptop CPU; Pro in about 5 s on a GPU.
 
 ## What it is for
 
@@ -71,18 +73,20 @@ Spain crops, VENµS; 178 scenes). Every model at its native scale, compared on t
 
 Worked examples for each: [Applications](https://sharadhnaidu.github.io/synapse-sr/applications/).
 
-## Pro or Flash
+## Flash or Pro
 
-| | **Pro** (default) | **Flash** |
+| | **Flash** (default) | **Pro** |
 |---|---|---|
-| Network | 14.4 M-parameter state-space (Mamba) model | ~0.6 M-parameter convolutional model |
-| Best on | GPU: Colab, Kaggle, workstations | any CPU, laptops, integrated graphics, Apple silicon, ARM |
-| Load | `Pro.from_pretrained()` | `Flash.from_pretrained()` (weights not released yet) |
-| Physics guarantees | identical | identical |
+| Network | ~0.6 M-parameter re-parameterised CNN, distilled from Pro | 14.4 M-parameter state-space (Mamba) model |
+| Speed (1.28 km scene) | ~1 s on a laptop CPU; 10 km x 10 km in ~14 s | ~5 s on a GPU (Colab / Kaggle T4, workstations) |
+| Runs on | any CPU, laptops, integrated graphics, Apple silicon, ARM, any GPU | GPU recommended; CPU works, slower |
+| Choose it | `synapse_sr.super_resolve(src)` | `synapse_sr.super_resolve(src, model="pro")` |
+| Load | `Flash.from_pretrained()` | `Pro.from_pretrained()` |
+| Physics, support map, calibrated uncertainty | yes | yes |
 
-Both share the same observation-consistent pipeline, so the same guarantees hold for either one. **Flash weights
-are not released yet.** Until they are, use Pro, which also runs on CPU (more slowly). `synapse-sr --models` shows
-what is published.
+Both run the same observation-consistent pipeline and score within a whisker of each other on the benchmark above.
+Use **Flash** for speed and anywhere-deployment, **Pro** for the most detail on a GPU. `synapse-sr --models` lists
+every published checkpoint.
 
 ## Why trust the output
 
@@ -94,7 +98,7 @@ r.x_base        # what the 10 m observation determines
 r.prior         # what the network added (x_base + prior == image), invisible to the sensor
 r.support       # per pixel: 2 observation-determined, 1 medium, 0 prior-dominated or invalid
 r.uncertainty() # calibrated expected error per pixel and band
-r.consistency   # re-observing the output reproduces the input, in sensor-noise units
+r.consistency   # how closely re-observing the output reproduces the input, in sensor-noise units
 ```
 
 `x_hat = x_base + P_N(delta)`: `P_N` removes every component the sensor could have seen from the network's

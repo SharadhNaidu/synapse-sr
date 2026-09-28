@@ -71,13 +71,13 @@ def main(argv=None):
     ap = argparse.ArgumentParser(prog="synapse-sr",
                                  description="Sentinel-2 10 m -> 2.0 m RGBN super-resolution (SYNAPSE Pro / Flash)",
                                  epilog="examples:\n  synapse-sr scene.tif scene_2m.tif\n"
-                                        "  synapse-sr scene.tif scene_2m.tif --model flash --device cpu\n"
+                                        "  synapse-sr scene.tif scene_2m.tif --model pro\n"
                                         "  synapse-sr --env\n  synapse-sr --models",
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("input", nargs="?", help="Sentinel-2 GeoTIFF (10, 12 or 13 bands, or named bands)")
     ap.add_argument("output", nargs="?", help="output GeoTIFF: B04 B03 B02 B08, ERRSCALE x4, SUPPORT")
-    ap.add_argument("--model", default="pro",
-                    help="'pro' (default, most accurate), 'flash' (fast, CPU friendly) or a registered name")
+    ap.add_argument("--model", default="flash",
+                    help="'flash' (default: fast on any CPU or GPU), 'pro' (highest detail, best on a GPU) or a registered name")
     ap.add_argument("--weights", help="local .safetensors checkpoint (no network access needed)")
     ap.add_argument("--device", help="cuda, cpu, mps, cuda:1, ... (default: cuda when available)")
     ap.add_argument("--scl", default="auto", help="scene classification raster; 'auto' uses <input>_scl.tif, 'none' disables")

@@ -103,6 +103,30 @@ class Pro:
     def _backend(self, y):
         return backend(y)
 
+    def _predict(self, yb, amp, tta):
+        """Network output; with tta, the mean over the 8 flips / 90-degree rotations of the input, each mapped back.
+        Every transform keeps the 10 m lattice, so the averaged detail is still a valid input to P_N."""
+        def run(y):
+            if amp is not None:
+                with torch.autocast("cuda", dtype=amp):
+                    return self.model(y)
+            return self.model(y)
+        if not tta:
+            return run(yb)
+        acc = None
+        for k in range(4):
+            for flip in (False, True):
+                y = torch.rot90(yb, k, (-2, -1))
+                y = y.flip(-1) if flip else y
+                o = run(y)
+                outs = {}
+                for key, v in o.items():
+                    v = v.float()
+                    v = v.flip(-1) if flip else v
+                    outs[key] = torch.rot90(v, -k, (-2, -1))
+                acc = outs if acc is None else {key: acc[key] + outs[key] for key in acc}
+        return {key: v / 8 for key, v in acc.items()}
+
     BYTES_PER_PX = {"pytorch": 3.0e5, "triton": 1.2e5, "fused": 1.2e5, "cnn": 2.0e4}   # measured peak per window px
 
     def _plan(self, kind, H, W, halo, tile, batch):
@@ -195,7 +219,7 @@ class Pro:
                       offset: Optional[float] = None, tile: Optional[int] = None, halo: Optional[int] = None,
                       context: bool = True, batch: Optional[int] = None,
                       progress: Union[bool, str, Callable[[int, int], None]] = "auto",
-                      discrepancy: float = DISCREPANCY) -> Result:
+                      discrepancy: float = DISCREPANCY, tta: bool = False) -> Result:
         """Super-resolve one Sentinel-2 scene.
 
         Parameters
@@ -245,13 +269,13 @@ class Pro:
         callback = progress if callable(progress) else None
         t0 = time.time()
         with (ui.RunProgress(type(self).__name__) if show else contextlib.nullcontext()) as bar:
-            r = self._run(src, band_names, scl, nodata, offset, tile, halo, context, batch, bar, callback, discrepancy)
+            r = self._run(src, band_names, scl, nodata, offset, tile, halo, context, batch, bar, callback, discrepancy, tta)
         r.metadata["seconds"] = round(time.time() - t0, 3)
         if show:
             bar.done(r, r.metadata["seconds"])
         return r
 
-    def _run(self, src, band_names, scl, nodata, offset, tile, halo, context, batch, bar, callback, discrepancy):
+    def _run(self, src, band_names, scl, nodata, offset, tile, halo, context, batch, bar, callback, discrepancy, tta):
         if bar:
             bar.stage("reading input")
         profile, tags = None, {}
@@ -321,11 +345,7 @@ class Pro:
                 part = members[k:k + bs]
                 yb = torch.cat([y10[..., r0:r1, c0:c1] for _, _, _, _, r0, c0, r1, c1 in part])
                 xb = baseline.window(self.op, yb[:, :4], lam, fast=fast)
-                if amp is not None:
-                    with torch.autocast("cuda", dtype=amp):
-                        o = self.model(yb)
-                else:
-                    o = self.model(yb)
+                o = self._predict(yb, amp, tta)
                 xw = xb + projector.apply(self.op, o["delta"].float(), fast=fast)
                 cw = F.softplus(o["conf_logit"].float()) + 1e-4
                 for n, (i, j, i1, j1, r0, c0, r1, c1) in enumerate(part):
@@ -359,7 +379,7 @@ class Pro:
             num += (r.pow(2) * m).sum((0, 2, 3))
             cnt += float(m.sum())
         rms = (num / cnt).sqrt() / tau if cnt > 0 else torch.full((4,), float("nan"), device=self.device)
-        bad = [b for b, v in zip(self.op.bands, rms.tolist()) if v > 1.5 * discrepancy + 1.0]
+        bad = [b for b, v in zip(self.op.bands, rms.tolist()) if v > 5.0 * discrepancy]   # common lambda: up to ~3x
         if bad:
             warnings.warn(f"the output disagrees with the input beyond sensor noise in {bad} (RMS well above the {discrepancy:g} tau target): check the "
                           f"band order, the radiometric offset and that the input is Sentinel-2 L2A on the 10 m grid",
@@ -374,7 +394,7 @@ class Pro:
         gsd = abs(profile["transform"].a) / SCALE if profile else 10.0 / SCALE
         meta = {"scale": SCALE, "model": self.meta.get("name", "local"), "scan_backend": kind,
                 "precision": "bfloat16" if amp is not None else "float32", "tile": tile, "halo": halo,
-                "lambda": lam.tolist(), "discrepancy_tau": discrepancy, "bands": list(self.op.bands),
+                "lambda": lam.tolist(), "discrepancy_tau": discrepancy, "tta": bool(tta), "bands": list(self.op.bands),
                 "support_classes": {"2": "HIGH: observation-determined", "1": "MEDIUM",
                                     "0": "LOW: prior-dominated or invalid input", "thresholds_tau": SUPPORT_T},
                 "invalid_input_fraction": float(1 - valid.mean()),

@@ -33,20 +33,21 @@ r = synapse_sr.super_resolve(scene)
 In a terminal or notebook you see a live progress bar and then a one-line summary:
 
 ```text
-✓ synapse-pro-v2: 640×640 px at 2 m in 80.3 s · consistency ≤ 0.99 τ · 22% observation-determined
+✓ synapse-flash-v1: 640×640 px at 2 m in 0.9 s · consistency ≤ 9.72τ · 27% observation-determined
 ```
 
-That line was measured on a laptop GPU (RTX 4070, Windows, PyTorch scan). The same scene takes 5.2 s on an
-A100 slice with the Triton kernel, which is the kind of GPU runtime Colab and Kaggle give you.
+That line was measured on a laptop CPU (Intel i9, no GPU used). Pro (`model="pro"`) processes the same scene in about
+5 s on an A100 slice with the Triton kernel, the kind of GPU runtime Colab and Kaggle give you.
 
-`synapse_sr.super_resolve` loads the default model (Pro) once and caches it. To choose the model and the device:
+`synapse_sr.super_resolve` loads the default model (Flash) once and caches it. To choose the model and the device:
 
 ```python
 from synapse_sr import Pro, Flash
 
-model = Pro.from_pretrained(device="cuda")          # most accurate; GPU recommended
-model = Flash.from_pretrained(device="cpu")         # fast on any CPU, laptop or ARM machine
+model = Flash.from_pretrained(device="cpu")         # default model: fast on any CPU, laptop or ARM machine
+model = Pro.from_pretrained(device="cuda")          # most detail; GPU recommended
 r = model.super_resolve(scene)
+r = synapse_sr.super_resolve(scene, model="pro")    # or in one call
 ```
 
 ## 4. Look at it

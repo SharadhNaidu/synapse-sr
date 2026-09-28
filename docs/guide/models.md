@@ -4,29 +4,37 @@ synapse-sr ships two networks behind one pipeline. Both produce `x_hat = x_base 
 baseline, the same null-space projection, and the same support, consistency and uncertainty outputs. They differ
 only in the network that predicts `delta`.
 
-| | **Pro** | **Flash** |
+| | **Flash** (default) | **Pro** |
 |---|---|---|
-| Network | `SynapseProX5`: Mamba state-space backbone with a 20 m spectral-context stem, 14.4 M parameters | `SynapseFlashX5`: re-parameterised SPAN-style CNN, ~0.6 M parameters at inference |
-| Context | whole tile (global scan) | local convolutions |
-| Best hardware | NVIDIA GPU | anything: CPU, laptop, integrated graphics, Apple silicon, ARM |
-| Load | `Pro.from_pretrained()` | `Flash.from_pretrained()` |
-| CLI | `--model pro` (default) | `--model flash` |
+| Network | `SynapseFlashX5`: re-parameterised SPAN-style CNN on all ten bands, ~0.6 M parameters at inference, distilled from Pro | `SynapseProX5`: Mamba state-space backbone with a 20 m spectral-context stem, 14.4 M parameters |
+| Context | local convolutions (dilated receptive field over the whole tile) | whole tile (global scan) |
+| Speed, 1.28 km scene | ~1 s on a laptop CPU, ~0.7 s on a laptop GPU | ~5 s on an A100 slice, ~25 s on a laptop GPU without Triton |
+| Best hardware | anything: CPU, laptop, integrated graphics, Apple silicon, ARM, any GPU | NVIDIA GPU |
+| One call | `synapse_sr.super_resolve(src)` | `synapse_sr.super_resolve(src, model="pro")` |
+| Load | `Flash.from_pretrained()` | `Pro.from_pretrained()` |
+| CLI | `synapse-sr in.tif out.tif` (default) | `synapse-sr in.tif out.tif --model pro` |
 
 ```python
 import synapse_sr
 
 from synapse_sr import Pro, Flash
 
-pro = Pro.from_pretrained()                       # most accurate
-flash = Flash.from_pretrained(device="cpu")       # fastest on any machine
+flash = Flash.from_pretrained()                   # default: fast on any machine
+pro = Pro.from_pretrained()                       # most detail; best on a GPU
 ```
 
 `Pro.from_pretrained(weights=...)` also accepts a Flash checkpoint and returns a `Flash` object, so code that
 loads local files does not need to know which kind of checkpoint it has.
 
-!!! note "Flash weights"
-    Flash weights are not released yet. `synapse-sr --models` lists what is published. Until Flash weights are released,
-    `Flash.from_pretrained()` raises an error that explains how to load a local checkpoint.
+On the official opensr-test benchmark (README) the two score within a few thousandths of each other; Flash was
+trained to reproduce Pro's output (knowledge distillation) on real Sentinel-2 / NAIP pairs, a streamed NAIP corpus
+and ISRO Cartosat-derived pairs.
+
+## Test-time augmentation
+
+`super_resolve(..., tta=True)` averages the network over the 8 flips and 90-degree rotations of each tile before
+the physics projection. On the benchmark it changes the metrics by a few thousandths (slightly better spectral angle
+and detail correlation); it costs 8x the network time, which is cheap for Flash.
 
 ## Devices
 

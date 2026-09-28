@@ -1,12 +1,97 @@
 {
  "name": "synapse-flash-v1",
  "file": "synapse-flash-v1.safetensors",
- "url": "",
- "sha256": "",
+ "url": "https://huggingface.co/SharadhNaiduTrains/synapse-sr/resolve/main/Flash/synapse-flash-v1.safetensors",
+ "sha256": "03009c3f0e490a2b353da5028d6b42d7ebcca90472b2c71197ae656677e682a8",
  "target_m": 2.0,
  "scale": 5,
  "arch": "flash",
- "bands_out": ["B04", "B03", "B02", "B08"],
- "bands_in": ["B04", "B03", "B02", "B08", "B05", "B06", "B07", "B8A", "B11", "B12"],
- "status": "not released"
+ "bands_out": [
+  "B04",
+  "B03",
+  "B02",
+  "B08"
+ ],
+ "bands_in": [
+  "B04",
+  "B03",
+  "B02",
+  "B08",
+  "B05",
+  "B06",
+  "B07",
+  "B8A",
+  "B11",
+  "B12"
+ ],
+ "status": "release",
+ "size_bytes": 12102536,
+ "training_steps": 17500,
+ "params_inference": 595656,
+ "calibration": {
+  "error_model": {
+   "features": [
+    "log_scale",
+    "log_prior_over_tau",
+    "edge",
+    "local_std",
+    "brightness",
+    "ndvi",
+    "band_nir"
+   ],
+   "weights": [
+    -1.208782,
+    0.764002,
+    0.017336,
+    0.787534,
+    -7.990972,
+    0.410568,
+    -0.12157,
+    0.065974
+   ],
+   "quantiles": {
+    "0.80": 2.543480123570689,
+    "0.90": 3.4936502358447297,
+    "0.95": 4.554470811222331
+   },
+   "test_coverage": {
+    "0.80": 0.815295,
+    "0.90": 0.9063025,
+    "0.95": 0.9531775
+   },
+   "spearman": 0.5645272571431617,
+   "aurc_ratio": 0.5248290524803851,
+   "risk_curve": [
+    0.005190241150557995,
+    0.005925213452428579,
+    0.006675557233393192,
+    0.007463032379746437,
+    0.008217516355216503,
+    0.008776209317147732,
+    0.009352908469736576,
+    0.009998462162911892,
+    0.01067789364606142,
+    0.011437701992690563,
+    0.012278568930923939,
+    0.01318224798887968,
+    0.014143413864076138,
+    0.015150913968682289,
+    0.016183795407414436,
+    0.01729448325932026,
+    0.018501702696084976,
+    0.019813302904367447,
+    0.021237123757600784,
+    0.024377228692173958
+   ],
+   "tau": [
+    0.0006799999973736703,
+    0.0008399999933317304,
+    0.000859999970998615,
+    0.0019199999514967203
+   ]
+  },
+  "reference": "GeoSR dev split (held-out), 2 m NAIP-derived target",
+  "method": "log|error| linear model fitted on 1/4 of the dev patches, split-conformal quantiles on another 1/4, scored on the remaining 1/2; outputs produced by the synapse_sr package defaults",
+  "physics_discrepancy_tau": 4.0
+ }
 }

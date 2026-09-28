@@ -56,12 +56,13 @@ r.save("sentinel2_2m.tif")
 
 Worked examples: [Applications](applications.md).
 
-## Pro or Flash
+## Flash or Pro
 
-| | **Pro** (default) | **Flash** |
+| | **Flash** (default) | **Pro** |
 |---|---|---|
-| Network | 14.4 M-parameter Mamba state-space model | ~0.6 M-parameter CNN |
-| Runs best on | GPU (Colab, Kaggle, workstations) | any CPU, laptops, integrated graphics, Apple silicon, ARM |
+| Network | ~0.6 M-parameter CNN, distilled from Pro | 14.4 M-parameter Mamba state-space model |
+| Speed | ~1 s per 1.28 km scene on a laptop CPU | ~5 s per scene on a GPU |
+| Runs best on | anything: CPU, laptops, integrated graphics, Apple silicon, ARM, GPU | GPU (Colab, Kaggle, workstations) |
 | Guarantees | observation-consistent, support map, calibrated uncertainty | the same |
 
 More: [Choosing a model and a device](guide/models.md).

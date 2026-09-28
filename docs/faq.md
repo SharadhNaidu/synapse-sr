@@ -28,7 +28,7 @@ red-edge and SWIR indices, but they are **not** super-resolved.
 
 ### Pro or Flash?
 
-Use Pro on a GPU (Colab, Kaggle, a workstation). Flash, the CPU-oriented model, is not released yet. Until it is, Pro runs on CPU too, only more slowly.
+Flash (the default) runs anywhere, about 1 s per 1.28 km scene even on a laptop CPU. Pro adds the most detail and is best on a GPU (Colab, Kaggle, a workstation): `super_resolve(src, model="pro")`.
 The physics guarantees are identical. See [Choosing a model and a device](guide/models.md).
 
 ### How long does it take?

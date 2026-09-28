@@ -71,8 +71,8 @@ import synapse_sr
 
 from synapse_sr import Flash, Pro
 
-model = Flash.from_pretrained(device="cpu")          # once Flash weights are released
-# model = Pro.from_pretrained(device="cpu")          # works everywhere; slower
+model = Flash.from_pretrained(device="cpu")          # ~1 s per 1.28 km scene on a laptop CPU
+# model = Pro.from_pretrained(device="cpu")          # works everywhere; slower on CPU
 r = model.super_resolve("scene.tif", batch=1)
 ```
 

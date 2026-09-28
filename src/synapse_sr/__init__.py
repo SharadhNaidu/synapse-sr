@@ -11,17 +11,18 @@ __all__ = ["Pro", "Flash", "Result", "load", "super_resolve", "fetch_sentinel2",
 _default = {}
 
 
-def load(model="pro", weights=None, device=None):
+def load(model="flash", weights=None, device=None):
     """Load a model by short name (``"pro"``, ``"flash"``) or registered name (``"pro-v2"`` ...), or a local
     checkpoint with ``weights=``. Returns a :class:`Pro` or :class:`Flash`."""
     from synapse_sr.cli import ALIASES
     return Pro.from_pretrained(ALIASES.get(model, model), weights=weights, device=device)
 
 
-def super_resolve(src, model="pro", weights=None, device=None, **kwargs):
+def super_resolve(src, model="flash", weights=None, device=None, **kwargs):
     """One call: load (once, then cached) a model and super-resolve ``src``.
 
-    ``model`` is ``"pro"`` (default), ``"flash"`` or a registered name; ``weights`` / ``device`` go to
+    ``model`` is ``"flash"`` (default: fast on any machine), ``"pro"`` (highest detail, best on a GPU) or a
+    registered name; ``weights`` / ``device`` go to
     ``from_pretrained``; every other keyword goes to :meth:`Pro.super_resolve` (``tile``, ``batch``, ``scl``,
     ``progress`` ...).
     """
