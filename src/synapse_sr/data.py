@@ -22,6 +22,17 @@ def boa_offset(properties: dict) -> int:
     return -1000 if baseline >= 4.0 and not applied else 0
 
 
+def offset_present(dn, valid=None) -> bool:
+    """True if L2A DN still carry the +1000 baseline-04.00 offset. With it, surface reflectance 0 is DN 1000, so real
+    pixels almost never fall below it; when more than 5 % of valid blue/green/red pixels do, the offset has already
+    been removed (whatever the product metadata says)."""
+    vis = np.asarray(dn[:3], dtype=np.float32)
+    ok = (vis > 0).all(0) if valid is None else valid & (vis > 0).all(0)
+    if ok.sum() < 16:
+        return True
+    return float((vis[:, ok] < 1000).mean()) <= 0.05
+
+
 def fetch_sentinel2(lat: float, lon: float, start: str, end: str, size_m: float = 2000.0,
                     out: Optional[str] = None, max_cloud: float = 20.0, api: str = EARTH_SEARCH) -> str:
     """Download the least-cloudy Sentinel-2 L2A scene over a point into a SYNAPSE-ready GeoTIFF.
@@ -80,6 +91,8 @@ def fetch_sentinel2(lat: float, lon: float, start: str, end: str, size_m: float 
 
     stack = np.stack([read(k) for k in ASSETS.values()])
     offset = boa_offset(item.properties)
+    if offset and not offset_present(stack[:3]):            # provider flag disagrees with the data: trust the data
+        offset = 0
     prof = dict(driver="GTiff", crs=crs, transform=tr, height=h, width=w, compress="deflate")
     with rasterio.open(out, "w", count=len(ASSETS), dtype="uint16", nodata=0, **prof) as d:
         d.write(stack.astype(np.uint16))

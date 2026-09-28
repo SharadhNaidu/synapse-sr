@@ -12,6 +12,7 @@ import torch
 import torch.nn.functional as F
 
 from synapse_sr import ui
+from synapse_sr.data import offset_present
 from synapse_sr.io import geotiff
 from synapse_sr.io.sentinel2 import select_bands, to_reflectance
 from synapse_sr.models import baseline, projector
@@ -291,9 +292,15 @@ class Pro:
             arr, band_names = _as_array(src, band_names)
         if isinstance(scl, str) and scl == "auto":
             scl = None
+        tagged = offset is None
         if offset is None:
             offset = float(tags.get("BOA_ADD_OFFSET", 0.0))
         arr = select_bands(arr, list(band_names) if band_names else None)
+        if tagged and offset < 0 and not np.issubdtype(arr.dtype, np.floating) and not offset_present(arr):
+            warnings.warn(f"the input carries BOA_ADD_OFFSET={offset:g}, but its values show the offset was already "
+                          f"removed (many pixels below DN 1000); using offset 0. Pass offset= explicitly to override.",
+                          RuntimeWarning, stacklevel=3)
+            offset = 0.0
         valid = np.ones(arr.shape[1:], bool)
         if np.issubdtype(arr.dtype, np.floating):
             valid &= np.isfinite(arr).all(0)                  # NaN / inf inputs are invalid pixels, not zeros

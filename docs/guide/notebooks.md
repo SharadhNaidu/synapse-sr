@@ -22,7 +22,8 @@ flood / landslide change detection.
 4. Check the environment:
 
     ```python
-    !synapse-sr --env
+    import sys
+    !{sys.executable} -m synapse_sr --env        # works in any Jupyter; the shorter `!synapse-sr --env` on Colab and Kaggle
     ```
 
     On a GPU runtime `pro_scan_backend` reads `triton`. Triton compiles its kernel once per session, which

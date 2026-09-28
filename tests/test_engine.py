@@ -13,7 +13,7 @@ from synapse_sr.models.flash import SynapseFlashX5
 from synapse_sr.models.forward import S2Forward
 from synapse_sr.models.scan import chunked_selective_scan
 
-from conftest import gaussian_operator, scene
+from conftest import gaussian_operator, scene, write_tif
 
 DEVICES = ["cpu"] + (["cuda"] if torch.cuda.is_available() else [])
 
@@ -251,3 +251,17 @@ def test_halo_and_save_errors(flash, tmp_path):
     r = flash.super_resolve(arr, band_names=S2_12, tile=16)
     with pytest.raises(ValueError, match="npz"):
         r.save(str(tmp_path / "o.tif"))
+
+
+def test_offset_detected_from_data_not_metadata(flash, tmp_path):
+    from synapse_sr.data import offset_present
+    dn = scene(40, 40, seed=21)                                    # reflectance 0.05-0.35 -> DN 500-3500, no offset
+    assert not offset_present(dn[[3, 2, 1]])
+    assert offset_present(dn[[3, 2, 1]].astype(np.int32) + 1000)
+    src = tmp_path / "mistagged.tif"
+    write_tif(src, dn, tags={"BOA_ADD_OFFSET": "-1000"})           # provider says "apply -1000", data says "already removed"
+    with pytest.warns(RuntimeWarning, match="already removed"):
+        r = flash.super_resolve(str(src), progress=False)
+    assert r.metadata["offset"] == 0.0 and r.metadata["clamped_fraction"] < 0.01
+    ok = flash.super_resolve(str(src), offset=-1000, progress=False)   # an explicit offset is always respected
+    assert ok.metadata["offset"] == -1000
