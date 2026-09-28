@@ -25,6 +25,7 @@ from synapse_sr.result import Result
 
 SCALE = 5
 SCL_INVALID = (0, 1, 3, 8, 9, 10)          # no data, saturated/defective, cloud shadow, cloud medium/high, cirrus
+DISCREPANCY = 4.0                           # tau units; see super_resolve(discrepancy=)
 CLAMP = (0.0, 1.5)                          # physical reflectance range of the output
 SUPPORT_T = (3.0, 10.0)                    # |prior| / tau_b: below 3 HIGH, 3-10 MEDIUM, above LOW (heuristic)
 
@@ -108,7 +109,8 @@ class Pro:
         """Largest tile, then largest batch, that fit the memory budget: fewer, larger windows waste less of
         the context halo (tile 32 + halo 16 computes 4x the output area; tile 96 1.8x)."""
         if self.device.type == "cuda":
-            free, _ = torch.cuda.mem_get_info(self.device)
+            idx = self.device.index if self.device.index is not None else torch.cuda.current_device()
+            free, _ = torch.cuda.mem_get_info(idx)       # torch < 2.1 needs an index, not a bare 'cuda'
             budget = 0.6 * free
         else:
             budget = 6e9
@@ -192,7 +194,8 @@ class Pro:
                       scl: Optional[Union[PathLike, np.ndarray]] = "auto", nodata: Optional[float] = None,
                       offset: Optional[float] = None, tile: Optional[int] = None, halo: Optional[int] = None,
                       context: bool = True, batch: Optional[int] = None,
-                      progress: Union[bool, str, Callable[[int, int], None]] = "auto") -> Result:
+                      progress: Union[bool, str, Callable[[int, int], None]] = "auto",
+                      discrepancy: float = DISCREPANCY) -> Result:
         """Super-resolve one Sentinel-2 scene.
 
         Parameters
@@ -213,6 +216,12 @@ class Pro:
         offset:
             Added to DN before dividing by 10000 (``-1000`` for L2A processing baseline 04.00 and later).
             ``None`` (default) reads the GeoTIFF ``BOA_ADD_OFFSET`` tag, else 0. Ignored for reflectance input.
+        discrepancy:
+            How closely the physics baseline fits the measurement, in units of the Sentinel-2 L2A noise level:
+            the total noise it must absorb is sensor noise plus forward-model error (PSF and registration). The
+            default 4 was selected on the NAIP and SPOT opensr-test sets and confirmed on Spain-urban, Spain-crops
+            and VENuS: against 1 it cuts hallucinated detail and spectral-angle error substantially at a small cost in
+            added detail. ``1`` reproduces the strict sensor-noise fit of 0.3.0.
         tile, halo:
             Source-pixel tile size and context halo. By default the largest tile (and batch) that fits the free GPU
             memory, or a 6 GB RAM budget on CPU, is chosen: larger tiles waste less computation on the halo.
@@ -236,13 +245,13 @@ class Pro:
         callback = progress if callable(progress) else None
         t0 = time.time()
         with (ui.RunProgress(type(self).__name__) if show else contextlib.nullcontext()) as bar:
-            r = self._run(src, band_names, scl, nodata, offset, tile, halo, context, batch, bar, callback)
+            r = self._run(src, band_names, scl, nodata, offset, tile, halo, context, batch, bar, callback, discrepancy)
         r.metadata["seconds"] = round(time.time() - t0, 3)
         if show:
             bar.done(r, r.metadata["seconds"])
         return r
 
-    def _run(self, src, band_names, scl, nodata, offset, tile, halo, context, batch, bar, callback):
+    def _run(self, src, band_names, scl, nodata, offset, tile, halo, context, batch, bar, callback, discrepancy):
         if bar:
             bar.stage("reading input")
         profile, tags = None, {}
@@ -292,7 +301,7 @@ class Pro:
         if bar:
             bar.stage("calibrating the physics baseline")
         fast = self._physics()
-        lam = baseline.select_lambda(self.op, y4, fast=fast)
+        lam = baseline.select_lambda(self.op, y4, fast=fast, discrepancy=discrepancy, common=True)
         x = torch.zeros(1, 4, SCALE * H, SCALE * W, device=self.device)
         conf = torch.zeros_like(x)
         base = torch.zeros_like(x)
@@ -350,9 +359,9 @@ class Pro:
             num += (r.pow(2) * m).sum((0, 2, 3))
             cnt += float(m.sum())
         rms = (num / cnt).sqrt() / tau if cnt > 0 else torch.full((4,), float("nan"), device=self.device)
-        bad = [b for b, v in zip(self.op.bands, rms.tolist()) if v > 2.5]
+        bad = [b for b, v in zip(self.op.bands, rms.tolist()) if v > 1.5 * discrepancy + 1.0]
         if bad:
-            warnings.warn(f"the output disagrees with the input beyond sensor noise in {bad} (RMS > 2.5 tau): check the "
+            warnings.warn(f"the output disagrees with the input beyond sensor noise in {bad} (RMS well above the {discrepancy:g} tau target): check the "
                           f"band order, the radiometric offset and that the input is Sentinel-2 L2A on the 10 m grid",
                           RuntimeWarning, stacklevel=3)
 
@@ -365,7 +374,7 @@ class Pro:
         gsd = abs(profile["transform"].a) / SCALE if profile else 10.0 / SCALE
         meta = {"scale": SCALE, "model": self.meta.get("name", "local"), "scan_backend": kind,
                 "precision": "bfloat16" if amp is not None else "float32", "tile": tile, "halo": halo,
-                "lambda": lam.tolist(), "bands": list(self.op.bands),
+                "lambda": lam.tolist(), "discrepancy_tau": discrepancy, "bands": list(self.op.bands),
                 "support_classes": {"2": "HIGH: observation-determined", "1": "MEDIUM",
                                     "0": "LOW: prior-dominated or invalid input", "thresholds_tau": SUPPORT_T},
                 "invalid_input_fraction": float(1 - valid.mean()),

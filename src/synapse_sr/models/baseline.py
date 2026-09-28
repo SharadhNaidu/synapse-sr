@@ -107,10 +107,21 @@ def calibration_windows(H, W, win=60, n=5):
     return out
 
 
-def select_lambda(op, y, n_bisect=16, fast=None):
+def select_lambda(op, y, n_bisect=16, fast=None, discrepancy=1.0, common=False):
     """Median over the calibration windows of the per-window Morozov lambda. Equal-size windows are solved as one
-    batch: CG, the residual and the bisection are all per sample, so the result is unchanged."""
-    tau = tau_for(op)
+    batch: CG, the residual and the bisection are all per sample, so the result is unchanged.
+
+    discrepancy: target residual in units of the L2A sensor noise tau (Morozov with total noise = sensor noise plus
+    forward-model error). common: one lambda for all bands (the largest per-band value), so every band is sharpened
+    equally and no band-specific noise enters the fine detail."""
+    lam = _select(op, y, n_bisect, fast, tau_for(op) * discrepancy)
+    if common:
+        live = lam[lam < NO_CORRECTION]
+        lam = (live.max() if len(live) else lam.max()).expand_as(lam).clone()
+    return lam
+
+
+def _select(op, y, n_bisect, fast, tau):
     wins = calibration_windows(y.shape[-2], y.shape[-1])
     r0, c0, r1, c1 = wins[0]
     if all((b - a, d - c) == (r1 - r0, c1 - c0) for a, c, b, d in wins):
