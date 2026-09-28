@@ -55,3 +55,31 @@ jobs:
         with:
           name: dist
           path: dist/
+
+  real-weights:
+    name: published weights (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest, macos-13]   # macos-latest = Apple silicon, macos-13 = Intel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install ".[all]" psutil
+      - name: Flash stress suite (27 cases, downloads the published weights)
+        run: python tools/stress.py --model flash --device cpu --big 300
+      - name: Pro smoke test (published weights)
+        run: |
+          python -c "import numpy as np, synapse_sr; from synapse_sr.io.sentinel2 import S2_12; rng = np.random.default_rng(0); arr = (rng.random((12, 32, 32)) * 3000 + 300).astype(np.uint16); r = synapse_sr.super_resolve(arr, model='pro', band_names=S2_12, progress=False); assert r.image.shape == (4, 160, 160) and np.isfinite(r.image).all(); print('pro ok', r.metadata['model'], r.metadata['scan_backend'])"
+      - name: CLI with the default model
+        run: |
+          python -c "import numpy as np, rasterio; from affine import Affine; from synapse_sr.io.sentinel2 import S2_12; arr = (np.random.default_rng(1).random((12, 48, 48)) * 3000 + 300).astype(np.uint16); p = dict(driver='GTiff', count=12, height=48, width=48, dtype='uint16', crs='EPSG:32643', transform=Affine(10, 0, 500000, 0, -10, 4200000)); d = rasterio.open('in.tif', 'w', **p); d.write(arr); [d.set_band_description(i + 1, b) for i, b in enumerate(S2_12)]; d.close()"
+          synapse-sr in.tif out.tif --json --preview preview.png --cog
+          python -c "import rasterio; d = rasterio.open('out.tif'); assert d.count == 9 and d.res == (2.0, 2.0); print('cli ok')"
