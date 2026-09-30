@@ -4,7 +4,7 @@
     <img src="https://raw.githubusercontent.com/SharadhNaidu/synapse-sr/main/docs/assets/logo-wordmark-card.png" alt="SYNAPSE-SR, Sentinel-2 super-resolution" width="440">
   </picture>
 </p>
-Thank You [Priyangshu](https://github.com/auraflaa) for the work on Architecture and API work on the package !
+Thank You **[Priyangshu](https://github.com/auraflaa).** for the work on Architecture and API work on the package !
 
 <h1 align="center">SYNAPSE-SR: Sentinel-2 super-resolution to 2 m</h1>
 
