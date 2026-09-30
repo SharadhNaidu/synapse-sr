@@ -49,5 +49,5 @@ runs without downloading the trained checkpoint.
 
 ## Releases
 
-@SharadhNaidu publish by creating a GitHub release. The `publish` workflow builds the package and uploads it to
+@SharadhNaidu and @aurafla publish by creating a GitHub release. The `publish` workflow builds the package and uploads it to
 PyPI through trusted publishing.
