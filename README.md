@@ -13,6 +13,7 @@
 
 <p align="center">
   <a href="https://pypi.org/project/synapse-sr/"><img src="https://img.shields.io/pypi/v/synapse-sr?color=black" alt="PyPI"></a>
+  <a href="https://pepy.tech/projects/synapse-sr"><img src="https://static.pepy.tech/personalized-badge/synapse-sr?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads" alt="PyPI Downloads"></a>
   <a href="https://github.com/SharadhNaidu/synapse-sr/actions/workflows/tests.yml"><img src="https://github.com/SharadhNaidu/synapse-sr/actions/workflows/tests.yml/badge.svg" alt="tests"></a>
   <a href="https://sharadhnaidu.github.io/synapse-sr/"><img src="https://img.shields.io/badge/docs-online-black" alt="docs"></a>
   <a href="https://huggingface.co/SharadhNaiduTrains/synapse-sr"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20weights-Hugging%20Face-black" alt="Hugging Face weights"></a>
@@ -23,7 +24,6 @@
 <p align="center">
   <img src="https://raw.githubusercontent.com/SharadhNaidu/synapse-sr/main/docs/assets/gifs/rv_university.gif" alt="RV University, Bengaluru: Sentinel-2 10 m and synapse-sr 2 m" width="440">
 </p>
-
 **synapse-sr** turns a Sentinel-2 L2A scene into a 2.0 m red / green / blue / near-infrared GeoTIFF. A physical model
 of the instrument pins everything the satellite measured. The network only adds what 10 m pixels cannot show, and
 every output says which pixels came from the measurement and which came from the learned prior.
