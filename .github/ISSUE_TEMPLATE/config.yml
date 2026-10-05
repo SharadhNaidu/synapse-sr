@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://sharadhnaidu.github.io/synapse-sr/
+    about: Guides, applications, verification recipes, and troubleshooting
+  - name: Security reports
+    url: https://github.com/SharadhNaidu/synapse-sr/security/advisories/new
+    about: Private channel for anything that could put users at risk (see SECURITY.md)
