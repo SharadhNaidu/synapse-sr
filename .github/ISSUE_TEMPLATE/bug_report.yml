@@ -1,0 +1,60 @@
+name: Bug report
+description: Something in synapse-sr behaves incorrectly
+title: "[bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please complete what you can — logs and a
+        reproducer get fixes shipped fastest.
+  - type: input
+    id: version
+    attributes:
+      label: Package version
+      description: From `synapse-sr --env` or `pip show synapse-sr`
+      placeholder: "0.4.1"
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: Python version, torch version, device (cpu / cuda / mps), OS
+      placeholder: "3.11, torch 2.4+cu118, cuda (A100), Ubuntu 20.04"
+    validations:
+      required: true
+  - type: dropdown
+    id: model
+    attributes:
+      label: Model
+      options:
+        - Flash (default)
+        - Pro
+        - LDSR (reference only)
+        - unsure / not model-specific
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Exact commands or minimal script, including input description (bands, size, dtype or file)
+      placeholder: |
+        synapse-sr scene.tif out_2m.tif --model flash
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened vs what you expected
+      description: Paste output, traceback, and any consistency/support numbers if relevant
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submit checks
+      options:
+        - label: I ran the same input through the checks in docs/guide/verify.md (consistency, null-space)
+        - label: No model weights, datasets, or large rasters are attached (link them instead)

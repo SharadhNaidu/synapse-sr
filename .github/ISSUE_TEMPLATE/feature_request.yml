@@ -1,0 +1,37 @@
+name: Feature request
+description: Propose an addition to synapse-sr
+title: "[feat]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What remote-sensing task is blocked today, and what do you do instead?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What should exist (API sketch, CLI shape, or output), and how it fits the observation-consistent design (measurement vs learned prior, trust outputs)
+    validations:
+      required: true
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Likely scope
+      options:
+        - Docs / examples only
+        - Small (single module, no API change)
+        - Medium (new API surface or output)
+        - Large (new model, dependency, or format)
+    validations:
+      required: false
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds today, and why they fall short
+    validations:
+      required: false
