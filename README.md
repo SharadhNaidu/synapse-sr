@@ -141,6 +141,13 @@ output, so the network cannot contradict the measurement. See [How it works](htt
 [Examples](https://sharadhnaidu.github.io/synapse-sr/examples/) ·
 [API](https://sharadhnaidu.github.io/synapse-sr/api/)
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Report security issues privately per
+[SECURITY.md](SECURITY.md); accessibility barriers are tracked as bugs, see
+[ACCESSIBILITY.md](ACCESSIBILITY.md). Bug reports and feature requests use the
+issue templates; pull requests follow the PR template checklist.
+
 <details>
 <summary>Citation and acknowledgements</summary>
 
