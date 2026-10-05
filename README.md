@@ -24,6 +24,7 @@
 <p align="center">
   <img src="https://raw.githubusercontent.com/SharadhNaidu/synapse-sr/main/docs/assets/gifs/rv_university.gif" alt="RV University, Bengaluru: Sentinel-2 10 m and synapse-sr 2 m" width="440">
 </p>
+
 **synapse-sr** turns a Sentinel-2 L2A scene into a 2.0 m red / green / blue / near-infrared GeoTIFF. A physical model
 of the instrument pins everything the satellite measured. The network only adds what 10 m pixels cannot show, and
 every output says which pixels came from the measurement and which came from the learned prior.
