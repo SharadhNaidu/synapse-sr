@@ -19,11 +19,16 @@
   <a href="https://huggingface.co/SharadhNaiduTrains/synapse-sr"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20weights-Hugging%20Face-black" alt="Hugging Face weights"></a>
   <a href="https://colab.research.google.com/github/SharadhNaidu/synapse-sr/blob/main/notebooks/quickstart.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"></a>
   <a href="https://kaggle.com/kernels/welcome?src=https://github.com/SharadhNaidu/synapse-sr/blob/main/notebooks/quickstart.ipynb"><img src="https://kaggle.com/static/images/open-in-kaggle.svg" alt="Open in Kaggle"></a>
+  <a href="https://youtu.be/WCMb76ykUls"><img src="https://img.shields.io/badge/video-5%20min%20explainer-black?logo=youtube" alt="5-minute video explainer"></a>
+  <a href="https://github.com/SharadhNaidu/synapse-sr/stargazers"><img src="https://img.shields.io/github/stars/SharadhNaidu/synapse-sr?style=social" alt="GitHub stars"></a>
 </p>
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/SharadhNaidu/synapse-sr/main/docs/assets/gifs/rv_university.gif" alt="RV University, Bengaluru: Sentinel-2 10 m and synapse-sr 2 m" width="440">
 </p>
+
+<p align="center"><b>Free Sentinel-2 imagery of anywhere on Earth, enhanced from 10 m to 2 m resolution, on a laptop.</b><br>
+If it is useful to you, a ⭐ helps other people find it.</p>
 
 **synapse-sr** turns a Sentinel-2 L2A scene into a 2.0 m red / green / blue / near-infrared GeoTIFF. A physical model
 of the instrument pins everything the satellite measured. The network only adds what 10 m pixels cannot show, and
@@ -34,9 +39,6 @@ pip install synapse-sr
 ```
 
 ```python
-import synapse_sr
-result = synapse_sr.super_resolve("scene.tif")
-
 import synapse_sr
 
 r = synapse_sr.super_resolve("sentinel2_l2a.tif")   # progress bar, then a 5x larger result
@@ -52,6 +54,19 @@ synapse-sr scenes/ scenes_2m/ --cog                  # a whole folder, as Cloud-
 
 Every common task on one page: **[cheat sheet](https://sharadhnaidu.github.io/synapse-sr/cheatsheet/)**. AI assistants
 and agents can read the whole documentation from [`llms.txt`](https://sharadhnaidu.github.io/synapse-sr/llms.txt).
+
+## On real places
+
+<table>
+  <tr>
+    <td align="center"><img src="https://raw.githubusercontent.com/SharadhNaidu/synapse-sr/main/docs/assets/gifs/bengaluru_urban.gif" alt="Bengaluru city centre: Sentinel-2 10 m and synapse-sr 2 m" width="260"><br><sub>Bengaluru city centre</sub></td>
+    <td align="center"><img src="https://raw.githubusercontent.com/SharadhNaidu/synapse-sr/main/docs/assets/gifs/punjab_fields.gif" alt="Farm fields in Punjab: Sentinel-2 10 m and synapse-sr 2 m" width="260"><br><sub>Farm fields, Punjab</sub></td>
+    <td align="center"><img src="https://raw.githubusercontent.com/SharadhNaidu/synapse-sr/main/docs/assets/gifs/wayanad_landslide.gif" alt="Wayanad landslide area: Sentinel-2 10 m and synapse-sr 2 m" width="260"><br><sub>Wayanad landslide, Kerala</sub></td>
+  </tr>
+</table>
+
+Each pair is the same Sentinel-2 L2A scene at its native 10 m and after synapse-sr. Run your own place with
+`synapse-sr --fetch LAT,LON out.tif`, or [watch the 5-minute explainer](https://youtu.be/WCMb76ykUls).
 
 ## Benchmarks
 
@@ -166,3 +181,9 @@ issue templates; pull requests follow the PR template checklist.
 - Sentinel-2 data: Copernicus programme, European Space Agency.
 
 </details>
+
+## Star history
+
+<a href="https://star-history.com/#SharadhNaidu/synapse-sr&Date">
+  <img src="https://api.star-history.com/svg?repos=SharadhNaidu/synapse-sr&type=Date" alt="Star history of synapse-sr" width="600">
+</a>
