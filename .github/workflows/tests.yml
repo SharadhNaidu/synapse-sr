@@ -12,8 +12,11 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        python: ["3.9", "3.10", "3.11", "3.12"]
+        python: ["3.10", "3.11", "3.12"]
         include:
+          # ubuntu-latest (26.04) has no python 3.9 build, so 3.9 runs on 24.04
+          - os: ubuntu-24.04
+            python: "3.9"
           - os: windows-latest
             python: "3.11"
           - os: macos-latest
