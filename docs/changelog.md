@@ -14,6 +14,11 @@ All notable changes to this project are documented here. The format follows
 - CUDA, ONNX Runtime CUDA and TensorRT validated on 2× NVIDIA T4; Pro runs natively on CUDA.
 - `synapse-sr --env` now reports OpenVINO and ONNX Runtime availability.
 
+### Fixed
+
+- The bad-band consistency warning now scales with the requested `discrepancy` (5 tau for Pro, 20 tau for Flash)
+  instead of always using Flash's 20 tau, and names the offending bands with their measured values.
+
 ## [0.4.1] - 2026-09-28
 
 ### Changed

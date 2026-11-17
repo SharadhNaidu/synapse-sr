@@ -29,6 +29,8 @@ SCL_INVALID = (0, 1, 3, 8, 9, 10)          # no data, saturated/defective, cloud
 DISCREPANCY = 4.0                           # tau units; Flash default, see super_resolve(discrepancy=)
 CLAMP = (0.0, 1.5)                          # physical reflectance range of the output
 SUPPORT_T = (3.0, 10.0)                    # |prior| / tau_b: below 3 HIGH, 3-10 MEDIUM, above LOW (heuristic)
+WARN_FACTOR = 5.0                          # warn when RMS exceeds this multiple of the requested tau
+WARN_FLOOR_TAU = 1.0                       # floor: never warn below 5 tau, even for a tight request
 
 PathLike = Union[str, "os.PathLike[str]"]
 
@@ -75,6 +77,15 @@ def _amp_dtype(device):
     if device.type == "cuda" and torch.cuda.is_bf16_supported():
         return torch.bfloat16
     return None
+
+
+def _warning_limit(discrepancy: float) -> float:
+    """RMS threshold (in tau) for the bad-band warning.
+
+    The limit scales with the fit the caller requested, with a one-tau floor:
+    5 tau for Pro's tight 0.5, 20 tau for Flash's loose 4.
+    """
+    return WARN_FACTOR * max(float(discrepancy), WARN_FLOOR_TAU)
 
 
 class Pro:
@@ -466,11 +477,16 @@ class Pro:
             num += (r.pow(2) * m).sum((0, 2, 3))
             cnt += float(m.sum())
         rms = (num / cnt).sqrt() / tau if cnt > 0 else torch.full((4,), float("nan"), device=self.device)
-        bad = [b for b, v in zip(self.op.bands, rms.tolist()) if v > 5.0 * max(discrepancy, DISCREPANCY)]
+        limit = _warning_limit(discrepancy)
+        bad = [(b, v) for b, v in zip(self.op.bands, rms.tolist()) if v > limit]
         if bad:
-            warnings.warn(f"the output disagrees with the input beyond sensor noise in {bad} (RMS well above the {discrepancy:g} tau target): check the "
-                          f"band order, the radiometric offset and that the input is Sentinel-2 L2A on the 10 m grid",
-                          RuntimeWarning, stacklevel=3)
+            detail = ", ".join(f"{b} {v:.1f} tau" for b, v in bad)
+            warnings.warn(
+                f"the output disagrees with the input beyond sensor noise in {detail} "
+                f"(threshold {limit:.1f} tau): check the band order, the radiometric offset "
+                "and that the input is Sentinel-2 L2A on the 10 m grid",
+                RuntimeWarning, stacklevel=3,
+            )
 
         prior = (x - base)[0]
         s = (prior.abs() / tau.view(-1, 1, 1)).amax(0).cpu().numpy()
