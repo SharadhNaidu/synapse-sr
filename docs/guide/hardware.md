@@ -28,6 +28,36 @@ Pro's state-space scan is not exportable to ONNX, OpenVINO or TensorRT yet, so t
 
 The OpenVINO and ONNX Runtime backends need PyTorch 2.1 or newer for `torch.export`; the ONNX exporter is tested with PyTorch 2.6 and newer.
 
+The CLI uses the same switches:
+
+```bash
+synapse-sr in.tif out.tif --backend openvino --backend-device CPU
+synapse-sr in.tif out.tif --backend onnx --backend-device cuda
+```
+
+`synapse-sr --env` lists the installed runtimes and their devices/providers.
+
+## What stays the same
+
+Only the detail network moves. The physics baseline, null-space projector, support thresholds, calibration and every `Result` method stay in PyTorch, so these are backend-independent:
+
+- `x_base`, `prior`, `context`, `valid`
+- `consistency`
+- `support`, `confidence` (up to network precision)
+- `uncertainty()`, `interval()`
+- `indices()`, `boundaries()`, `change()`
+- `save()` and the GeoTIFF layout
+
+On a 320 × 320 urban scene, the full-pipeline comparison against PyTorch was:
+
+| Backend | Image max diff | Support agreement | Index max diff |
+|---|---|---|---|
+| OpenVINO CPU | 1.5e-7 | 100 % | 6e-7 |
+| OpenVINO Intel GPU | 6.2e-4 | 99.5 % | 2.5e-3 |
+| ONNX Runtime CPU | 1.2e-7 | 100 % | 6e-7 |
+
+The GPU difference is FP16 rounding, not a change in the pipeline. The support map is a thresholded quantity, so a 0.5 % class change on the GPU is expected; the underlying reflectance difference is still sub-milli-reflectance.
+
 ## NVIDIA CUDA
 
 No extra step. Pass `device="cuda"`; the package uses the native PyTorch path, and Pro picks the Triton or fused scan when available.

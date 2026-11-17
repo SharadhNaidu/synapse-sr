@@ -76,6 +76,7 @@ class ONNXRuntimeNetwork:
         self._export()
         self._cache_dir = cache_dir
         self._session = self._session()
+        self._input_name = self._session.get_inputs()[0].name
 
     def _export(self):
         self._model.eval()
@@ -117,8 +118,7 @@ class ONNXRuntimeNetwork:
                                           provider_options=provider_options)
 
     def __call__(self, x: torch.Tensor) -> dict:
-        name = self._session.get_inputs()[0].name
-        out = self._session.run(None, {name: x.detach().cpu().numpy()})
+        out = self._session.run(None, {self._input_name: x.detach().cpu().numpy()})
         # Copy: the session owns the output buffers.
         delta = torch.as_tensor(np.asarray(out[0])).clone().to(x.device)
         conf = torch.as_tensor(np.asarray(out[1])).clone().to(x.device)

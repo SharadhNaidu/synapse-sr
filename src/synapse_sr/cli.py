@@ -32,6 +32,18 @@ def _env():
         info["gdal"] = rasterio.__gdal_version__
     except ImportError:
         info["rasterio"] = None
+    try:
+        import openvino as ov
+        info["openvino"] = ov.__version__
+        info["openvino_devices"] = ov.Core().available_devices
+    except ImportError:
+        info["openvino"] = None
+    try:
+        import onnxruntime as ort
+        info["onnxruntime"] = ort.__version__
+        info["onnxruntime_providers"] = ort.get_available_providers()
+    except ImportError:
+        info["onnxruntime"] = None
     return info
 
 
@@ -88,6 +100,9 @@ def main(argv=None):
                     help="'flash' (default: fast on any CPU or GPU), 'pro' (highest detail, best on a GPU) or a registered name")
     ap.add_argument("--weights", help="local .safetensors checkpoint (no network access needed)")
     ap.add_argument("--device", help="cuda, cpu, mps, cuda:1, ... (default: cuda when available)")
+    ap.add_argument("--backend", choices=["openvino", "onnx", "onnxruntime", "tensorrt"],
+                    help="optional network accelerator: OpenVINO (Flash), ONNX Runtime (Flash), or TensorRT (Flash)")
+    ap.add_argument("--backend-device", help="OpenVINO device (CPU, GPU) or ONNX Runtime provider (cpu, cuda, rocm)")
     ap.add_argument("--scl", default="auto", help="scene classification raster; 'auto' uses <input>_scl.tif, 'none' disables")
     ap.add_argument("--offset", type=float, help="DN offset, e.g. -1000 for baseline >= 04.00 (default: BOA_ADD_OFFSET tag or 0)")
     ap.add_argument("--tile", type=int, help="tile size in source pixels")
@@ -160,11 +175,13 @@ def _run(a):
     kw = dict(scl=None if str(a.scl).lower() == "none" else a.scl, offset=a.offset, tile=a.tile, halo=a.halo, batch=a.batch)
     if os.path.isdir(a.input):
         rep = super_resolve_folder(a.input, a.output, model=a.model, weights=a.weights, device=a.device, cog=a.cog,
+                                   backend=a.backend, backend_device=a.backend_device,
                                    progress=False, **kw)
         if a.json:
             print(json.dumps(rep))
         return 1 if any("error" in r for r in rep) else 0
-    model = load(a.model, weights=a.weights, device=a.device)
+    model = load(a.model, weights=a.weights, device=a.device,
+                 backend=a.backend, backend_device=a.backend_device)
     r = model.super_resolve(a.input, progress=False if (a.quiet or a.json) else "auto", **kw)
     r.save(a.output, with_confidence=not a.no_confidence, cog=a.cog)
     if a.preview:

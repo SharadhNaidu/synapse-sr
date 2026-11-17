@@ -53,6 +53,7 @@ class OpenVINONetwork:
         self._core = ov.Core()
         self._model = _Tuple(model.eval())
         self._compiled = self._compile()
+        self._out_keys = None
 
     def _compile(self):
         ov = _openvino()
@@ -67,8 +68,9 @@ class OpenVINONetwork:
 
     def __call__(self, x: torch.Tensor) -> dict:
         result = self._compiled(x.detach().cpu().numpy())
-        keys = list(result.keys())
+        if self._out_keys is None:
+            self._out_keys = list(result.keys())
         # Copy: OpenVINO may reuse the output buffer on the next inference.
-        delta = torch.as_tensor(np.asarray(result[keys[0]])).clone().to(x.device)
-        conf = torch.as_tensor(np.asarray(result[keys[1]])).clone().to(x.device)
+        delta = torch.as_tensor(np.asarray(result[self._out_keys[0]])).clone().to(x.device)
+        conf = torch.as_tensor(np.asarray(result[self._out_keys[1]])).clone().to(x.device)
         return {"delta": delta, "conf_logit": conf}

@@ -98,6 +98,7 @@ class Pro:
         self.meta = meta or {}
         self._fast = None
         self._accel = None
+        self._accel_name = "pytorch"
 
     def __repr__(self):
         return (f"{type(self).__name__}(name={self.meta.get('name', 'local')!r}, device={str(self.device)!r}, "
@@ -124,9 +125,12 @@ class Pro:
                 "The OpenVINO backend currently supports Flash only. "
                 "Pro's state-space scan is not exportable yet."
             )
+        if self._accel_name == f"openvino:{device}":
+            return self
         from synapse_sr.backends.openvino import OpenVINONetwork
 
         self._accel = OpenVINONetwork(self.model, device)
+        self._accel_name = f"openvino:{device}"
         return self
 
     def enable_onnxruntime(self, device: str = "cpu", cache_dir: str | None = None) -> "Pro":
@@ -147,9 +151,12 @@ class Pro:
                 "The ONNX Runtime backend currently supports Flash only. "
                 "Pro's state-space scan is not exportable to ONNX yet."
             )
+        if self._accel_name == f"onnx:{device.lower()}":
+            return self
         from synapse_sr.backends.onnxruntime import ONNXRuntimeNetwork
 
         self._accel = ONNXRuntimeNetwork(self.model, device, cache_dir)
+        self._accel_name = f"onnx:{self._accel.device}"
         return self
 
     def enable_tensorrt(self, cache_dir: str | None = None) -> "Pro":
@@ -266,6 +273,7 @@ class Pro:
         self.op.to(self.device)
         self._fast = None
         self._accel = None
+        self._accel_name = "pytorch"
         return self
 
     def _physics(self):
@@ -472,6 +480,7 @@ class Pro:
         support[clamped[0].any(0).cpu().numpy()] = 0
         gsd = abs(profile["transform"].a) / SCALE if profile else 10.0 / SCALE
         meta = {"scale": SCALE, "model": self.meta.get("name", "local"), "scan_backend": kind,
+                "detail_backend": self._accel_name,
                 "precision": "bfloat16" if amp is not None else "float32", "tile": tile, "halo": halo,
                 "lambda": lam.tolist(), "discrepancy_tau": discrepancy, "tta": bool(tta), "restore_mean": bool(restore_mean), "bands": list(self.op.bands),
                 "support_classes": {"2": "HIGH: observation-determined", "1": "MEDIUM",

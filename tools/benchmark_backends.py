@@ -52,8 +52,12 @@ def main():
     ap.add_argument("--tile", type=int, default=32)
     ap.add_argument("--halo", type=int, default=8)
     ap.add_argument("--reps", type=int, default=3)
+    ap.add_argument("--threads", type=int, default=4)
     ap.add_argument("--json", default=None)
     args = ap.parse_args()
+
+    if args.threads:
+        torch.set_num_threads(args.threads)
 
     out = {"device": args.device, "torch": torch.__version__, "models": {}}
     if torch.cuda.is_available():
@@ -77,7 +81,7 @@ def main():
 
     for name in args.models:
         model = synapse_sr.load(name, device=args.device)
-        x = torch.randn(1, 10, 32, 32)
+        x = torch.from_numpy(img[:, :32, :32]).unsqueeze(0).contiguous()
         row = {"params": int(sum(p.numel() for p in model.model.parameters()))}
         with torch.no_grad():
             ref = model.model(x)
