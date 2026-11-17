@@ -75,6 +75,7 @@ class ONNXRuntimeNetwork:
         self._path = os.path.join(self._tmp.name, "flash.onnx")
         self._export()
         self._cache_dir = cache_dir
+        self.active_provider = None
         self._session = self._session()
         self._input_name = self._session.get_inputs()[0].name
 
@@ -113,9 +114,18 @@ class ONNXRuntimeNetwork:
         if self.device == "tensorrt" and self._cache_dir:
             provider_options[0] = {"trt_engine_cache_enable": True,
                                    "trt_engine_cache_path": self._cache_dir}
-        return self._ort.InferenceSession(self._path, sess_options=options,
-                                          providers=providers,
-                                          provider_options=provider_options)
+        session = self._ort.InferenceSession(self._path, sess_options=options,
+                                             providers=providers,
+                                             provider_options=provider_options)
+        active = session.get_providers()
+        if providers[0] not in active:
+            warnings.warn(
+                f"{providers[0]} was requested but is not active; using {active[0]}. "
+                "TensorRT needs its libraries on PATH/LD_LIBRARY_PATH.",
+                RuntimeWarning, stacklevel=3,
+            )
+        self.active_provider = active[0]
+        return session
 
     def __call__(self, x: torch.Tensor) -> dict:
         out = self._session.run(None, {self._input_name: x.detach().cpu().numpy()})

@@ -156,7 +156,7 @@ class Pro:
         from synapse_sr.backends.onnxruntime import ONNXRuntimeNetwork
 
         self._accel = ONNXRuntimeNetwork(self.model, device, cache_dir)
-        self._accel_name = f"onnx:{self._accel.device}"
+        self._accel_name = f"onnx:{self._accel.active_provider}"
         return self
 
     def enable_tensorrt(self, cache_dir: str | None = None) -> "Pro":
