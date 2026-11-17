@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Optional OpenVINO and ONNX Runtime backends for the Flash detail network (`enable_openvino`, `enable_onnxruntime`,
+  `enable_tensorrt`) with `--backend` / `--backend-device` on the CLI. The physics pipeline stays in PyTorch.
+- Hardware compatibility guide covering PyTorch CPU/CUDA/ROCm/MPS, OpenVINO, ONNX Runtime and TensorRT.
+- CUDA, ONNX Runtime CUDA and TensorRT validated on 2× NVIDIA T4; Pro runs natively on CUDA.
+- `synapse-sr --env` now reports OpenVINO and ONNX Runtime availability.
+
+### Fixed
+
+- The bad-band consistency warning now scales with the requested `discrepancy` (5 tau for Pro, 20 tau for Flash)
+  instead of always using Flash's 20 tau, and names the offending bands with their measured values.
+
 ## [0.4.1] - 2026-09-28
 
 ### Changed

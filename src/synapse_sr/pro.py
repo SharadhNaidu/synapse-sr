@@ -29,6 +29,8 @@ SCL_INVALID = (0, 1, 3, 8, 9, 10)          # no data, saturated/defective, cloud
 DISCREPANCY = 4.0                           # tau units; Flash default, see super_resolve(discrepancy=)
 CLAMP = (0.0, 1.5)                          # physical reflectance range of the output
 SUPPORT_T = (3.0, 10.0)                    # |prior| / tau_b: below 3 HIGH, 3-10 MEDIUM, above LOW (heuristic)
+WARN_FACTOR = 5.0                          # warn when RMS exceeds this multiple of the requested tau
+WARN_FLOOR_TAU = 1.0                       # floor: never warn below 5 tau, even for a tight request
 
 PathLike = Union[str, "os.PathLike[str]"]
 
@@ -77,6 +79,15 @@ def _amp_dtype(device):
     return None
 
 
+def _warning_limit(discrepancy: float) -> float:
+    """RMS threshold (in tau) for the bad-band warning.
+
+    The limit scales with the fit the caller requested, with a one-tau floor:
+    5 tau for Pro's tight 0.5, 20 tau for Flash's loose 4.
+    """
+    return WARN_FACTOR * max(float(discrepancy), WARN_FLOOR_TAU)
+
+
 class Pro:
     """SYNAPSE Pro super-resolution model (Sentinel-2 10 m -> 2.0 m RGBN).
 
@@ -97,6 +108,8 @@ class Pro:
         self.op = op.to(self.device)
         self.meta = meta or {}
         self._fast = None
+        self._accel = None
+        self._accel_name = "pytorch"
 
     def __repr__(self):
         return (f"{type(self).__name__}(name={self.meta.get('name', 'local')!r}, device={str(self.device)!r}, "
@@ -105,10 +118,73 @@ class Pro:
     def _backend(self, y):
         return backend(y)
 
+    def enable_openvino(self, device: str = "CPU") -> "Pro":
+        """Run the detail network through OpenVINO on CPU or an Intel GPU.
+
+        ``device`` is an OpenVINO device string: ``"CPU"``, ``"GPU"``,
+        ``"GPU.0"``, and so on. The physics baseline and projector stay in
+        PyTorch, so the output matches the PyTorch path apart from
+        floating-point rounding. The Intel GPU path may use lower precision.
+
+        Only Flash is supported at the moment. Pro's Mamba scan has a
+        data-dependent chunk loop that the current OpenVINO exporter cannot
+        trace. Install the optional dependency with
+        ``pip install "synapse-sr[openvino]"``.
+        """
+        if not isinstance(self.model, SynapseFlashX5):
+            raise NotImplementedError(
+                "The OpenVINO backend currently supports Flash only. "
+                "Pro's state-space scan is not exportable yet."
+            )
+        if self._accel_name == f"openvino:{device}":
+            return self
+        from synapse_sr.backends.openvino import OpenVINONetwork
+
+        self._accel = OpenVINONetwork(self.model, device)
+        self._accel_name = f"openvino:{device}"
+        return self
+
+    def enable_onnxruntime(self, device: str = "cpu", cache_dir: Optional[str] = None) -> "Pro":
+        """Run the detail network through ONNX Runtime.
+
+        ``device`` is ``"cpu"``, ``"cuda"``, ``"rocm"`` or ``"tensorrt"``.
+        CUDA and TensorRT need ``onnxruntime-gpu``; ROCm needs an ONNX
+        Runtime build with the ROCm provider. TensorRT also needs the
+        TensorRT libraries. ``cache_dir`` is used for the TensorRT engine
+        cache.
+
+        Only Flash is supported at the moment. Pro's Mamba scan is not
+        exportable to ONNX. Install the optional dependency with
+        ``pip install "synapse-sr[onnx]"`` or ``"synapse-sr[onnx-gpu]"``.
+        """
+        if not isinstance(self.model, SynapseFlashX5):
+            raise NotImplementedError(
+                "The ONNX Runtime backend currently supports Flash only. "
+                "Pro's state-space scan is not exportable to ONNX yet."
+            )
+        if self._accel_name == f"onnx:{device.lower()}":
+            return self
+        from synapse_sr.backends.onnxruntime import ONNXRuntimeNetwork
+
+        self._accel = ONNXRuntimeNetwork(self.model, device, cache_dir)
+        self._accel_name = f"onnx:{self._accel.active_provider}"
+        return self
+
+    def enable_tensorrt(self, cache_dir: Optional[str] = None) -> "Pro":
+        """Run the detail network through the ONNX Runtime TensorRT provider."""
+        return self.enable_onnxruntime("tensorrt", cache_dir=cache_dir)
+
     def _predict(self, yb, amp, tta):
         """Network output; with tta, the mean over the 8 flips / 90-degree rotations of the input, each mapped back.
         Every transform keeps the 10 m lattice, so the averaged detail is still a valid input to P_N."""
         def run(y):
+            if self._accel is not None:
+                try:
+                    return self._accel(y)
+                except Exception:
+                    # Shapes below the exported minimum (or batch > 1) fall
+                    # back to PyTorch; the output is the same model.
+                    pass
             if amp is not None:
                 with torch.autocast("cuda", dtype=amp):
                     return self.model(y)
@@ -207,6 +283,8 @@ class Pro:
         self.model.to(self.device)
         self.op.to(self.device)
         self._fast = None
+        self._accel = None
+        self._accel_name = "pytorch"
         return self
 
     def _physics(self):
@@ -399,11 +477,16 @@ class Pro:
             num += (r.pow(2) * m).sum((0, 2, 3))
             cnt += float(m.sum())
         rms = (num / cnt).sqrt() / tau if cnt > 0 else torch.full((4,), float("nan"), device=self.device)
-        bad = [b for b, v in zip(self.op.bands, rms.tolist()) if v > 5.0 * max(discrepancy, DISCREPANCY)]
+        limit = _warning_limit(discrepancy)
+        bad = [(b, v) for b, v in zip(self.op.bands, rms.tolist()) if v > limit]
         if bad:
-            warnings.warn(f"the output disagrees with the input beyond sensor noise in {bad} (RMS well above the {discrepancy:g} tau target): check the "
-                          f"band order, the radiometric offset and that the input is Sentinel-2 L2A on the 10 m grid",
-                          RuntimeWarning, stacklevel=3)
+            detail = ", ".join(f"{b} {v:.1f} tau" for b, v in bad)
+            warnings.warn(
+                f"the output disagrees with the input beyond sensor noise in {detail} "
+                f"(threshold {limit:.1f} tau): check the band order, the radiometric offset "
+                "and that the input is Sentinel-2 L2A on the 10 m grid",
+                RuntimeWarning, stacklevel=3,
+            )
 
         prior = (x - base)[0]
         s = (prior.abs() / tau.view(-1, 1, 1)).amax(0).cpu().numpy()
@@ -413,6 +496,7 @@ class Pro:
         support[clamped[0].any(0).cpu().numpy()] = 0
         gsd = abs(profile["transform"].a) / SCALE if profile else 10.0 / SCALE
         meta = {"scale": SCALE, "model": self.meta.get("name", "local"), "scan_backend": kind,
+                "detail_backend": self._accel_name,
                 "precision": "bfloat16" if amp is not None else "float32", "tile": tile, "halo": halo,
                 "lambda": lam.tolist(), "discrepancy_tau": discrepancy, "tta": bool(tta), "restore_mean": bool(restore_mean), "bands": list(self.op.bands),
                 "support_classes": {"2": "HIGH: observation-determined", "1": "MEDIUM",

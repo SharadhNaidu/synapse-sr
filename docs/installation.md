@@ -45,6 +45,9 @@ Install the PyTorch build that matches your hardware first if you need a specifi
 | `synapse-sr[xarray]` | `xarray` | `Result.to_xarray()` and xarray inputs |
 | `synapse-sr[all]` | both of the above | |
 | `synapse-sr[cuda]` | `mamba-ssm` | the fused CUDA selective-scan kernel |
+| `synapse-sr[openvino]` | `openvino` | OpenVINO CPU/GPU backend for Flash |
+| `synapse-sr[onnx]` | `onnxruntime`, `onnxscript` | ONNX Runtime CPU backend for Flash |
+| `synapse-sr[onnx-gpu]` | `onnxruntime-gpu`, `onnxscript` | ONNX Runtime CUDA/TensorRT backend for Flash |
 
 ## Platforms
 

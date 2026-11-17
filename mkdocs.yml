@@ -45,6 +45,7 @@ nav:
       - Cheat sheet: cheatsheet.md
       - Colab and Kaggle: guide/notebooks.md
       - Choosing a model and a device: guide/models.md
+      - Hardware compatibility: guide/hardware.md
   - User guide:
       - Inputs and preprocessing: guide/inputs.md
       - Outputs: guide/outputs.md
