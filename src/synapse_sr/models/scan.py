@@ -20,6 +20,7 @@ __all__ = ["chunked_selective_scan", "selective_scan_fn", "backend"]
 
 SAFE_DECAY = 120.0
 MAX_ELEMS = 1 << 25                  # state elements per piece (~128 MB in float32), bounds peak memory
+CPU_MAX_ELEMS = 1 << 22              # 4x tighter on CPU: smaller live copies in the exp/cumsum below
 
 
 def chunked_selective_scan(u, delta, A, B, C, D=None, delta_bias=None, delta_softplus=True, chunk=64):
@@ -31,7 +32,8 @@ def chunked_selective_scan(u, delta, A, B, C, D=None, delta_bias=None, delta_sof
         B, C = B[:, None], C[:, None]
     k = B.shape[1]
     per = d // k
-    if b * d * n * L > MAX_ELEMS and (b > 1 or k > 1 or per % 2 == 0):
+    limit = MAX_ELEMS if u.is_cuda else CPU_MAX_ELEMS
+    if b * d * n * L > limit and (b > 1 or k > 1 or per % 2 == 0):
         # samples, channel groups and channels are independent: run them in pieces
         sl = lambda t, i, j: None if t is None else t[i:j]
         if b > 1:

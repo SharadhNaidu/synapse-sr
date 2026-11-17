@@ -68,7 +68,9 @@ How tightly the physics baseline fits the measurement is set by `discrepancy`, i
 (0.5, the most recovered detail). Flash fits to about 4 units, which absorbs forward-model error (point-spread function,
 registration) instead of turning it into fine detail, and then restores every 10 m pixel's mean reflectance exactly
 with a smooth correction (`restore_mean`), so its values here are typically 5 to 15. Because one regularisation weight
-is shared by all bands, individual bands can sit a few units apart. Values above 20 trigger a warning: check the band
-order, the radiometric offset and that the input is L2A on the 10 m grid. The learned detail itself is invisible to this measurement by construction (it lies in the null space).
+is shared by all bands, individual bands can sit a few units apart. A band triggers a warning when its RMS exceeds
+`5 × max(discrepancy, 1)` noise units: 5 for Pro's tight 0.5, 20 for Flash's loose 4. The floor keeps a tight request
+from warning below 5 noise units. The warning names the offending bands and their values. Check the band order, the
+radiometric offset and that the input is L2A on the 10 m grid. The learned detail itself is invisible to this measurement by construction (it lies in the null space).
 The measurement is taken on the assembled mosaic, so tiling seams would show up here.
 

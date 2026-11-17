@@ -146,6 +146,8 @@ output, so the network cannot contradict the measurement. See [How it works](htt
 
 `synapse-sr --env` shows what is active on your machine.
 
+See [Hardware compatibility](https://sharadhnaidu.github.io/synapse-sr/guide/hardware/) for the full device and runtime matrix (CUDA, ROCm, MPS, OpenVINO, ONNX Runtime, TensorRT), including preview backends.
+
 ## Documentation
 
 [Quick start](https://sharadhnaidu.github.io/synapse-sr/quickstart/) ·
