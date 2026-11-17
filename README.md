@@ -146,29 +146,7 @@ output, so the network cannot contradict the measurement. See [How it works](htt
 
 `synapse-sr --env` shows what is active on your machine.
 
-### OpenVINO backend (optional)
-
-The Flash detail network can run through [OpenVINO](https://docs.openvino.ai/) on Intel CPUs and Intel GPUs. The physics baseline and the null-space projector stay in PyTorch, so the output is unchanged apart from floating-point rounding.
-
-```bash
-pip install "synapse-sr[openvino]"
-```
-
-If the package is already installed, `pip install openvino` is enough.
-
-```python
-import synapse_sr
-
-flash = synapse_sr.load("flash")
-flash.enable_openvino(device="CPU")      # or "GPU" for an Intel GPU
-result = flash.super_resolve("scene.tif")
-```
-
-`device` accepts any OpenVINO device string (`"CPU"`, `"GPU"`, `"GPU.0"`, ...). The model is exported when `enable_openvino` is called and reused for every tile. The export uses dynamic height and width, so tiles of different sizes share one compiled model. The backend needs PyTorch 2.1 or newer for `torch.export`; the default PyTorch path is unchanged.
-
-The network forward runs faster on an Intel CPU and considerably faster on an Intel GPU; the exact gain depends on tile size and hardware. The full `super_resolve` call also runs the physics baseline and null-space projector, which dominate small scenes, so the end-to-end gain is smaller than the network-only gain. The backend helps most when the network is the bottleneck.
-
-Pro's state-space scan is not exportable yet, so `enable_openvino` raises `NotImplementedError` for Pro. Without the `openvino` package the method raises a clear install error.
+See [Hardware compatibility](https://sharadhnaidu.github.io/synapse-sr/guide/hardware/) for the full device and runtime matrix (CUDA, ROCm, MPS, OpenVINO, ONNX Runtime, TensorRT), including preview backends.
 
 ## Documentation
 

@@ -97,7 +97,7 @@ class Pro:
         self.op = op.to(self.device)
         self.meta = meta or {}
         self._fast = None
-        self._ov = None
+        self._accel = None
 
     def __repr__(self):
         return (f"{type(self).__name__}(name={self.meta.get('name', 'local')!r}, device={str(self.device)!r}, "
@@ -116,7 +116,8 @@ class Pro:
 
         Only Flash is supported at the moment. Pro's Mamba scan has a
         data-dependent chunk loop that the current OpenVINO exporter cannot
-        trace. Install the optional dependency with ``pip install openvino``.
+        trace. Install the optional dependency with
+        ``pip install "synapse-sr[openvino]"``.
         """
         if not isinstance(self.model, SynapseFlashX5):
             raise NotImplementedError(
@@ -125,16 +126,43 @@ class Pro:
             )
         from synapse_sr.backends.openvino import OpenVINONetwork
 
-        self._ov = OpenVINONetwork(self.model, device)
+        self._accel = OpenVINONetwork(self.model, device)
         return self
+
+    def enable_onnxruntime(self, device: str = "cpu", cache_dir: str | None = None) -> "Pro":
+        """Run the detail network through ONNX Runtime.
+
+        ``device`` is ``"cpu"``, ``"cuda"``, ``"rocm"`` or ``"tensorrt"``.
+        CUDA and TensorRT need ``onnxruntime-gpu``; ROCm needs an ONNX
+        Runtime build with the ROCm provider. TensorRT also needs the
+        TensorRT libraries. ``cache_dir`` is used for the TensorRT engine
+        cache.
+
+        Only Flash is supported at the moment. Pro's Mamba scan is not
+        exportable to ONNX. Install the optional dependency with
+        ``pip install "synapse-sr[onnx]"`` or ``"synapse-sr[onnx-gpu]"``.
+        """
+        if not isinstance(self.model, SynapseFlashX5):
+            raise NotImplementedError(
+                "The ONNX Runtime backend currently supports Flash only. "
+                "Pro's state-space scan is not exportable to ONNX yet."
+            )
+        from synapse_sr.backends.onnxruntime import ONNXRuntimeNetwork
+
+        self._accel = ONNXRuntimeNetwork(self.model, device, cache_dir)
+        return self
+
+    def enable_tensorrt(self, cache_dir: str | None = None) -> "Pro":
+        """Run the detail network through the ONNX Runtime TensorRT provider."""
+        return self.enable_onnxruntime("tensorrt", cache_dir=cache_dir)
 
     def _predict(self, yb, amp, tta):
         """Network output; with tta, the mean over the 8 flips / 90-degree rotations of the input, each mapped back.
         Every transform keeps the 10 m lattice, so the averaged detail is still a valid input to P_N."""
         def run(y):
-            if self._ov is not None:
+            if self._accel is not None:
                 try:
-                    return self._ov(y)
+                    return self._accel(y)
                 except Exception:
                     # Shapes below the exported minimum (or batch > 1) fall
                     # back to PyTorch; the output is the same model.
@@ -237,7 +265,7 @@ class Pro:
         self.model.to(self.device)
         self.op.to(self.device)
         self._fast = None
-        self._ov = None
+        self._accel = None
         return self
 
     def _physics(self):
