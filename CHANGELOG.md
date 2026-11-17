@@ -11,6 +11,7 @@ All notable changes to this project are documented here. The format follows
 - Optional OpenVINO and ONNX Runtime backends for the Flash detail network (`enable_openvino`, `enable_onnxruntime`,
   `enable_tensorrt`) with `--backend` / `--backend-device` on the CLI. The physics pipeline stays in PyTorch.
 - Hardware compatibility guide covering PyTorch CPU/CUDA/ROCm/MPS, OpenVINO, ONNX Runtime and TensorRT.
+- CUDA, ONNX Runtime CUDA and TensorRT validated on 2× NVIDIA T4; Pro runs natively on CUDA.
 - `synapse-sr --env` now reports OpenVINO and ONNX Runtime availability.
 
 ## [0.4.1] - 2026-09-28

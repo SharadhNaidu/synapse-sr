@@ -13,18 +13,18 @@ The pipeline has two parts: the detail network and the physics baseline plus nul
 | Runtime | Device | Flash | Pro | Status | Install |
 |---|---|---|---|---|---|
 | PyTorch | CPU | Yes | Yes | Tested | `pip install synapse-sr` |
-| PyTorch | NVIDIA CUDA | Yes | Yes | Preview | CUDA PyTorch build |
+| PyTorch | NVIDIA CUDA | Yes | Yes | Tested (T4) | CUDA PyTorch build |
 | PyTorch | AMD ROCm | Yes | Yes | Preview | ROCm PyTorch build |
 | PyTorch | Apple MPS | Yes | Experimental | Preview | MPS PyTorch build |
 | OpenVINO | Intel CPU / GPU | Yes | No | Tested | `pip install "synapse-sr[openvino]"` |
 | ONNX Runtime | CPU | Yes | No | Tested | `pip install "synapse-sr[onnx]"` |
-| ONNX Runtime | NVIDIA CUDA | Yes | No | Preview | `pip install "synapse-sr[onnx-gpu]"` |
+| ONNX Runtime | NVIDIA CUDA | Yes | No | Tested (T4) | `pip install "synapse-sr[onnx-gpu]"` |
 | ONNX Runtime | AMD ROCm | Yes | No | Preview | ROCm build of ONNX Runtime |
-| ONNX Runtime | NVIDIA TensorRT | Yes | No | Preview | `onnx-gpu` plus TensorRT |
+| ONNX Runtime | NVIDIA TensorRT | Yes | No | Tested (T4) | `onnx-gpu` plus TensorRT |
 
 Pro's state-space scan is not exportable to ONNX, OpenVINO or TensorRT yet, so those backends support Flash only. Pro runs through native PyTorch on CPU, CUDA, ROCm and MPS.
 
-**Preview** means the code path is implemented and uses the same interface, but the maintainers do not have the hardware to validate it. PyTorch CPU, OpenVINO CPU/Intel GPU and ONNX Runtime CPU are tested. The CUDA, ROCm, MPS and TensorRT rows need community validation.
+**Preview** means the code path is implemented and uses the same interface, but we have not validated it on that hardware. PyTorch CPU, OpenVINO CPU/Intel GPU, ONNX Runtime CPU, and the NVIDIA CUDA/TensorRT rows (on 2× T4) are tested. ROCm and MPS need community validation.
 
 The OpenVINO and ONNX Runtime backends need PyTorch 2.1 or newer for `torch.export`; the ONNX exporter is tested with PyTorch 2.6 and newer.
 
@@ -57,6 +57,18 @@ On a 320 × 320 urban scene, the full-pipeline comparison against PyTorch was:
 | ONNX Runtime CPU | 1.2e-7 | 100 % | 6e-7 |
 
 The GPU difference is FP16 rounding, not a change in the pipeline. The support map is a thresholded quantity, so a 0.5 % class change on the GPU is expected; the underlying reflectance difference is still sub-milli-reflectance.
+
+## Validated on NVIDIA T4
+
+On 2× Tesla T4 (PyTorch 2.11.0+cu130, ONNX Runtime GPU 1.32.0, TensorRT 10.16.1), a 128 × 128 LR urban scene was run through the full pipeline:
+
+- Flash PyTorch CUDA: reference.
+- Flash ONNX Runtime CUDA: image delta 0, support agreement 100 %, all indices 0.
+- Flash TensorRT: image delta 0, support agreement 100 %, all indices 0, active provider `TensorrtExecutionProvider`.
+- Pro PyTorch CUDA: completed, 4 × 640 × 640, finite, all three support classes present.
+- Folder API and CLI with `--backend onnx --backend-device cuda`: both completed.
+
+TensorRT must be installed and its libraries on `LD_LIBRARY_PATH`. Without them, ONNX Runtime falls back to CUDA; `detail_backend` in the result metadata reports the provider that actually ran, not the one requested.
 
 ## NVIDIA CUDA
 
@@ -137,7 +149,7 @@ If you need one of these, the backend interface is small: a class that takes the
 
 ## Preview backends: help us validate them
 
-The CUDA, ROCm, MPS and TensorRT rows are implemented but not validated by the maintainers, because we do not have that hardware in the test loop. If you run one of them:
+The ROCm and MPS rows are implemented but not validated by the maintainers. If you run one of them:
 
 - **It works?** Tell us the device, driver, package versions and whether the output matches the PyTorch path. A short note in an issue is enough.
 - **It fails?** Open an issue with the command, the traceback, the output of `synapse-sr --env`, and the backend and device you used.
