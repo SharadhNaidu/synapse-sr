@@ -43,6 +43,7 @@ dependencies = [
 stac = ["pystac-client>=0.6"]
 xarray = ["xarray>=0.20"]
 cuda = ["mamba-ssm>=1.1"]
+openvino = ["openvino>=2024.4"]
 all = ["pystac-client>=0.6", "xarray>=0.20"]
 test = ["pytest>=7", "pytest-cov>=4", "xarray>=0.20"]
 docs = ["mkdocs>=1.6,<2", "mkdocs-material>=9.5,<10", "mkdocstrings[python]>=0.24"]

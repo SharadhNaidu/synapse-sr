@@ -97,6 +97,7 @@ class Pro:
         self.op = op.to(self.device)
         self.meta = meta or {}
         self._fast = None
+        self._ov = None
 
     def __repr__(self):
         return (f"{type(self).__name__}(name={self.meta.get('name', 'local')!r}, device={str(self.device)!r}, "
@@ -105,10 +106,39 @@ class Pro:
     def _backend(self, y):
         return backend(y)
 
+    def enable_openvino(self, device: str = "CPU") -> "Pro":
+        """Run the detail network through OpenVINO on CPU or an Intel GPU.
+
+        ``device`` is an OpenVINO device string: ``"CPU"``, ``"GPU"``,
+        ``"GPU.0"``, and so on. The physics baseline and projector stay in
+        PyTorch, so the output matches the PyTorch path apart from
+        floating-point rounding. The Intel GPU path may use lower precision.
+
+        Only Flash is supported at the moment. Pro's Mamba scan has a
+        data-dependent chunk loop that the current OpenVINO exporter cannot
+        trace. Install the optional dependency with ``pip install openvino``.
+        """
+        if not isinstance(self.model, SynapseFlashX5):
+            raise NotImplementedError(
+                "The OpenVINO backend currently supports Flash only. "
+                "Pro's state-space scan is not exportable yet."
+            )
+        from synapse_sr.backends.openvino import OpenVINONetwork
+
+        self._ov = OpenVINONetwork(self.model, device)
+        return self
+
     def _predict(self, yb, amp, tta):
         """Network output; with tta, the mean over the 8 flips / 90-degree rotations of the input, each mapped back.
         Every transform keeps the 10 m lattice, so the averaged detail is still a valid input to P_N."""
         def run(y):
+            if self._ov is not None:
+                try:
+                    return self._ov(y)
+                except Exception:
+                    # Shapes below the exported minimum (or batch > 1) fall
+                    # back to PyTorch; the output is the same model.
+                    pass
             if amp is not None:
                 with torch.autocast("cuda", dtype=amp):
                     return self.model(y)
@@ -207,6 +237,7 @@ class Pro:
         self.model.to(self.device)
         self.op.to(self.device)
         self._fast = None
+        self._ov = None
         return self
 
     def _physics(self):
