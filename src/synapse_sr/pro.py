@@ -144,7 +144,7 @@ class Pro:
         self._accel_name = f"openvino:{device}"
         return self
 
-    def enable_onnxruntime(self, device: str = "cpu", cache_dir: str | None = None) -> "Pro":
+    def enable_onnxruntime(self, device: str = "cpu", cache_dir: Optional[str] = None) -> "Pro":
         """Run the detail network through ONNX Runtime.
 
         ``device`` is ``"cpu"``, ``"cuda"``, ``"rocm"`` or ``"tensorrt"``.
@@ -170,7 +170,7 @@ class Pro:
         self._accel_name = f"onnx:{self._accel.active_provider}"
         return self
 
-    def enable_tensorrt(self, cache_dir: str | None = None) -> "Pro":
+    def enable_tensorrt(self, cache_dir: Optional[str] = None) -> "Pro":
         """Run the detail network through the ONNX Runtime TensorRT provider."""
         return self.enable_onnxruntime("tensorrt", cache_dir=cache_dir)
 
