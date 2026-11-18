@@ -11,7 +11,7 @@ import safetensors.torch as st
 import torch
 import torch.nn.functional as F
 
-from synapse_sr import ui
+from synapse_sr import memory, ui
 from synapse_sr.data import offset_present
 from synapse_sr.io import geotiff
 from synapse_sr.io.sentinel2 import select_bands, to_reflectance
@@ -235,12 +235,15 @@ class Pro:
     def _plan(self, kind, H, W, halo, tile, batch):
         """Largest tile, then largest batch, that fit the memory budget: fewer, larger windows waste less of
         the context halo (tile 32 + halo 16 computes 4x the output area; tile 96 1.8x)."""
-        if self.device.type == "cuda":
+        budget = memory.override()
+        if budget is not None:
+            pass
+        elif self.device.type == "cuda":
             idx = self.device.index if self.device.index is not None else torch.cuda.current_device()
             free, _ = torch.cuda.mem_get_info(idx)       # torch < 2.1 needs an index, not a bare 'cuda'
             budget = 0.6 * free
         else:
-            budget = 6e9
+            budget = memory.cpu_budget()
         per = self.BYTES_PER_PX.get(kind, 3.0e5)
         if tile is None:
             tile = 32
@@ -353,7 +356,8 @@ class Pro:
             forward-model error, with fewer spurious edges). ``4`` on Pro reproduces 0.4.0.
         tile, halo:
             Source-pixel tile size and context halo. By default the largest tile (and batch) that fits the free GPU
-            memory, or a 6 GB RAM budget on CPU, is chosen: larger tiles waste less computation on the halo.
+            memory, or half the available RAM (at most 6 GB) on CPU, is chosen: larger tiles waste less computation on
+            the halo. ``SYNAPSE_SR_MEMORY`` (GB) overrides the budget on any device.
         batch:
             Tiles processed together (default: as many as fit the free GPU memory, up to 8; 1 on CPU).
         progress:
