@@ -44,15 +44,31 @@ def _index(r: Result, name: str) -> np.ndarray:
     return idx[name]
 
 
+def _same_grid(a: Result, b: Result):
+    if a.image.shape != b.image.shape:
+        raise ValueError(f"before and after must be on the same grid: shapes {a.image.shape} and {b.image.shape}")
+    if (a.profile is None) != (b.profile is None):
+        raise ValueError("before and after must both be georeferenced (GeoTIFF input) or both be arrays")
+    if a.profile is None:
+        return
+    if a.profile.get("crs") != b.profile.get("crs"):
+        raise ValueError(f"before and after use different CRS: {a.profile.get('crs')} and {b.profile.get('crs')}")
+    ta, tb = a.profile["transform"], b.profile["transform"]
+    tol = 0.01 * abs(ta.a)
+    if any(abs(u - v) > tol for u, v in zip(tuple(ta)[:6], tuple(tb)[:6])):
+        raise ValueError(f"before and after cover different areas: transforms {tuple(ta)[:6]} and {tuple(tb)[:6]}; "
+                         "clip both scenes to the same 10 m grid first")
+
+
 def change(before: Result, after: Result, index: str = "ndvi", threshold: Optional[float] = None,
            min_support: int = 1) -> Change:
     """Change map between two results on the same grid (e.g. before / after a flood, fire or earthquake).
+    Georeferenced results must share CRS and geotransform; a mismatch raises instead of comparing different places.
 
     ``index``: one of ``CHANGE_INDICES``. ``threshold`` defaults to 0.2 for normalised indices and 0.03 reflectance
     for brightness. Pixels invalid on either date, or prior-dominated (support < ``min_support``) on either date,
     are excluded from ``mask`` and reported through ``reliable``, so detected change rests on observed evidence."""
-    if before.image.shape != after.image.shape:
-        raise ValueError("before and after must be on the same grid")
+    _same_grid(before, after)
     d = _index(after, index) - _index(before, index)
     thr = threshold if threshold is not None else (0.03 if index == "brightness" else 0.2)
     rel = np.isfinite(d)                                   # index undefined on either date (e.g. dark pixels)
