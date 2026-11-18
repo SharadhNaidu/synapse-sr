@@ -98,6 +98,19 @@ def _scl_invalid(sc, shape):
     return bad[np.ix_(rows, cols)]
 
 
+def _mps_available():
+    mps = getattr(torch.backends, "mps", None)
+    return bool(mps is not None and mps.is_available())
+
+
+def _default_device(flash):
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if flash and _mps_available():
+        return torch.device("mps")
+    return torch.device("cpu")
+
+
 def _amp_dtype(device):
     if device.type == "cuda" and torch.cuda.is_bf16_supported():
         return torch.bfloat16
@@ -137,6 +150,7 @@ class Pro:
         self._accel_name = "pytorch"
         self._fallbacks = 0
         self._warned = False
+        self._auto_device = False
 
     def __repr__(self):
         return (f"{type(self).__name__}(name={self.meta.get('name', 'local')!r}, device={str(self.device)!r}, "
@@ -277,9 +291,11 @@ class Pro:
             Path to a local ``.safetensors`` checkpoint. Skips the registry and the network entirely
             (air-gapped use).
         device:
-            ``"cuda"``, ``"cpu"``, ``"cuda:1"`` ... Defaults to CUDA when available.
+            ``"cuda"``, ``"cpu"``, ``"mps"``, ``"cuda:1"`` ... Defaults to CUDA when available, then (Flash only) Apple
+            MPS, then CPU. An automatically chosen MPS device falls back to CPU, with a warning, if an operation is
+            not supported there.
         """
-        device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
+        auto = device is None
         meta = {}
         if weights is not None:
             known = registry.match(download.file_sha256(weights))
@@ -302,7 +318,9 @@ class Pro:
             model.load_state_dict(fold_v1_gate(net))
         if cls is not Pro and klass is not cls:
             raise ValueError(f"{weights} is a {klass.__name__} checkpoint; load it with {klass.__name__}.from_pretrained")
-        return klass(model, op, device, meta)
+        out = klass(model, op, _default_device(klass is Flash) if auto else device, meta)
+        out._auto_device = auto
+        return out
 
     def save_pretrained(self, path: PathLike) -> PathLike:
         """Write model and operator to a single ``.safetensors`` file loadable with ``weights=``."""
@@ -395,9 +413,19 @@ class Pro:
         show = progress is True or (progress == "auto" and ui.interactive())
         callback = progress if callable(progress) else None
         t0 = time.time()
+        args = (src, band_names, scl, nodata, offset, tile, halo, context, batch)
         with (ui.RunProgress(type(self).__name__) if show else contextlib.nullcontext()) as bar:
-            r = self._run(src, band_names, scl, nodata, offset, tile, halo, context, batch, bar, callback, discrepancy, tta,
-                          restore_mean, window, bounds)
+            try:
+                r = self._run(*args, bar, callback, discrepancy, tta, restore_mean, window, bounds)
+            except (NotImplementedError, RuntimeError) as e:
+                if not (self._auto_device and self.device.type == "mps"):
+                    raise
+                warnings.warn(f"MPS could not run this model ({type(e).__name__}: {str(e)[:200]}); using the CPU. "
+                              "Pass device='mps' to see the error instead.", RuntimeWarning, stacklevel=2)
+                accel, name = self._accel, self._accel_name      # accelerators run on the host: keep them
+                self.to("cpu")
+                self._accel, self._accel_name = accel, name
+                r = self._run(*args, bar, callback, discrepancy, tta, restore_mean, window, bounds)
         r.metadata["seconds"] = round(time.time() - t0, 3)
         if show:
             bar.done(r, r.metadata["seconds"])
