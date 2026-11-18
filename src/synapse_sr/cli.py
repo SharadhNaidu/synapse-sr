@@ -6,7 +6,7 @@ import sys
 
 from .pretrained import registry
 
-ALIASES = {"pro": registry.DEFAULT, "flash": registry.DEFAULT_FLASH}
+ALIASES = registry.ALIASES                    # kept for code that imported it from here
 
 
 def _env():

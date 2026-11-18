@@ -43,9 +43,9 @@ def load(model="flash", weights=None, device=None, backend=None, backend_device=
     ``"tensorrt"``. ``backend_device`` is the OpenVINO device (``"CPU"``, ``"GPU"``) or the ONNX Runtime
     provider device (``"cpu"``, ``"cuda"``, ``"rocm"``). Both are optional; the PyTorch path is the default.
     """
-    from synapse_sr.cli import ALIASES
+    from synapse_sr.pretrained import registry
     _check_backend(backend)
-    m = Pro.from_pretrained(ALIASES.get(model, model), weights=weights, device=device)
+    m = Pro.from_pretrained(registry.ALIASES.get(model, model), weights=weights, device=device)
     return _apply_backend(m, backend, backend_device)
 
 

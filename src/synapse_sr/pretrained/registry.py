@@ -4,6 +4,7 @@ import pathlib
 MANIFEST_DIR = pathlib.Path(__file__).parent
 DEFAULT = "pro-v2"
 DEFAULT_FLASH = "flash-v1"
+ALIASES = {"pro": DEFAULT, "flash": DEFAULT_FLASH}
 
 
 def manifest(name=DEFAULT):
