@@ -73,6 +73,25 @@ def _validate_profile(profile):
         raise ValueError(f"expected the Sentinel-2 10 m grid, got {abs(t.a)} m pixels")
 
 
+def _scl_invalid(sc, shape):
+    """SCL invalid-class mask on the scene grid. A coarser SCL (20 m) is sampled nearest; a finer one counts a
+    scene pixel invalid when any SCL pixel inside it is."""
+    bad = np.isin(np.asarray(sc), SCL_INVALID)
+    if bad.ndim != 2:
+        raise ValueError(f"SCL must be a 2-D (h, w) raster, got shape {bad.shape}")
+    (h, w), (H, W) = bad.shape, shape
+    if (h, w) == (H, W):
+        return bad
+    if abs(h / H - w / W) > 0.05 * max(h / H, w / W):
+        raise ValueError(f"SCL shape {bad.shape} does not cover the {shape} scene (different aspect ratio)")
+    ky, kx = h // H, w // W
+    if ky >= 2 and kx >= 2 and ky * H <= h and kx * W <= w and abs(h - ky * H) < ky and abs(w - kx * W) < kx:
+        return bad[:ky * H, :kx * W].reshape(H, ky, W, kx).any((1, 3))
+    rows = np.minimum(((np.arange(H) + 0.5) * h / H).astype(int), h - 1)
+    cols = np.minimum(((np.arange(W) + 0.5) * w / W).astype(int), w - 1)
+    return bad[np.ix_(rows, cols)]
+
+
 def _amp_dtype(device):
     if device.type == "cuda" and torch.cuda.is_bf16_supported():
         return torch.bfloat16
@@ -406,12 +425,7 @@ class Pro:
         if scl is not None:
             sc = geotiff.read(scl)[0][0] if _is_path(scl) else np.asarray(scl)
             scl_used = os.fspath(scl) if _is_path(scl) else "array"
-            if sc.shape != valid.shape:
-                f = int(round(valid.shape[0] / sc.shape[0]))
-                sc = np.repeat(np.repeat(sc, f, 0), f, 1)[:valid.shape[0], :valid.shape[1]]
-                if sc.shape != valid.shape:
-                    raise ValueError(f"SCL shape {sc.shape} does not tile the {valid.shape} scene")
-            valid &= ~np.isin(sc, SCL_INVALID)
+            valid &= ~_scl_invalid(sc, valid.shape)
 
         y10 = torch.tensor(to_reflectance(arr, offset=offset), dtype=torch.float32, device=self.device)[None]
         kind = self._backend(y10)
