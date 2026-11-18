@@ -6,7 +6,7 @@ from synapse_sr.pro import Flash, Pro
 from synapse_sr.result import Result
 
 __version__ = "0.4.2"
-__all__ = ["Pro", "Flash", "Result", "load", "super_resolve", "super_resolve_folder", "fetch_sentinel2", "change", "boundaries", "Change", "__version__"]
+__all__ = ["Pro", "Flash", "Result", "load", "super_resolve", "super_resolve_folder", "fetch_sentinel2", "change", "boundaries", "Change", "clear_cache", "__version__"]
 
 _default = {}
 
@@ -50,7 +50,7 @@ def load(model="flash", weights=None, device=None, backend=None, backend_device=
 
 
 def super_resolve(src, model="flash", weights=None, device=None, backend=None, backend_device=None, **kwargs):
-    """One call: load (once, then cached) a model and super-resolve ``src``.
+    """One call: load (once, then cached until :func:`clear_cache`) a model and super-resolve ``src``.
 
     ``model`` is ``"flash"`` (default: fast on any machine), ``"pro"`` (highest detail, best on a GPU) or a
     registered name; ``weights`` / ``device`` go to
@@ -61,6 +61,21 @@ def super_resolve(src, model="flash", weights=None, device=None, backend=None, b
     if key not in _default:
         _default[key] = load(model, weights, device, backend, backend_device)
     return _default[key].super_resolve(src, **kwargs)
+
+
+def clear_cache():
+    """Release the models :func:`super_resolve` keeps loaded (and their GPU memory). Returns how many were dropped."""
+    n = len(_default)
+    _default.clear()
+    import gc
+    gc.collect()
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:                                    # cleanup is best effort
+        pass
+    return n
 
 
 def super_resolve_folder(src_dir, out_dir, model="flash", pattern=None, overwrite=False, cog=False,
