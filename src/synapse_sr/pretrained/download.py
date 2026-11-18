@@ -21,6 +21,27 @@ def sha256(path):
     return h.hexdigest()
 
 
+def file_sha256(path):
+    """SHA-256 of ``path``, remembered in a ``.sha256`` sidecar keyed on size and modification time, so an unchanged
+    checkpoint is hashed once instead of on every load. Any change to the file invalidates the sidecar."""
+    path = pathlib.Path(path)
+    st = path.stat()
+    key = f"{st.st_size} {st.st_mtime_ns}"
+    side = path.with_name(path.name + ".sha256")
+    try:
+        digest, stamp = side.read_text().split(" ", 1)
+        if stamp.strip() == key and len(digest) == 64:
+            return digest
+    except (OSError, ValueError):
+        pass
+    digest = sha256(path)
+    try:
+        side.write_text(f"{digest} {key}")
+    except OSError:                                       # read-only location: just do not remember
+        pass
+    return digest
+
+
 def resolve(url):
     """Point Hugging Face URLs at ``$HF_ENDPOINT`` (a mirror such as https://hf-mirror.com) when it is set."""
     mirror = os.environ.get("HF_ENDPOINT", "").rstrip("/")
@@ -84,7 +105,7 @@ def fetch(url, expected_sha256, filename):
                                           "HF_ENDPOINT to a mirror or pass weights=") from e
                 time.sleep(2 ** attempt)
         os.replace(part, dst)
-    got = sha256(dst)
+    got = file_sha256(dst)
     if got != expected_sha256:
         raise RuntimeError(f"checksum mismatch for {dst}: expected {expected_sha256}, got {got}; "
                            f"delete the file to re-download")

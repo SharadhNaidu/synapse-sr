@@ -282,7 +282,7 @@ class Pro:
         device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
         meta = {}
         if weights is not None:
-            known = registry.match(download.sha256(weights))
+            known = registry.match(download.file_sha256(weights))
             meta = dict(known, weights=str(weights)) if known else {"name": "local", "weights": str(weights)}
         else:
             m = registry.manifest(name)
