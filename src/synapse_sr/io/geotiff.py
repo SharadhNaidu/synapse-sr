@@ -24,14 +24,14 @@ def scaled_transform(transform, scale):
     return transform * Affine.scale(1.0 / scale)
 
 
-def write(path, image, profile, scale, band_names=None, extra=None, cog=False):
+def write(path, image, profile, scale, band_names=None, extra=None, cog=False, nodata=None):
     rio = _rasterio()
     image = np.asarray(image, np.float32)
     if extra is not None:
         image = np.concatenate([image, np.asarray(extra, np.float32)])
     p = profile.copy()
     p.update(driver="GTiff", count=image.shape[0], height=image.shape[1], width=image.shape[2], dtype="float32",
-             transform=scaled_transform(profile["transform"], scale), compress="deflate", nodata=None)
+             transform=scaled_transform(profile["transform"], scale), compress="deflate", nodata=nodata)
     p.pop("blockxsize", None); p.pop("blockysize", None); p.pop("tiled", None)
     with rio.open(path, "w", **p) as dst:
         dst.write(image)

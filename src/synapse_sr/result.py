@@ -219,7 +219,7 @@ class Result:
         """Write a float32 GeoTIFF (or ``.npz`` when the input was an array).
 
         Bands: B04 B03 B02 B08, then ERRSCALE_* x4 and SUPPORT unless ``with_confidence=False``.
-        Invalid pixels are written as NaN. ``cog=True`` writes a Cloud-Optimised GeoTIFF (internal tiles and
+        Invalid pixels are written as NaN and the file declares NaN as its NoData value. ``cog=True`` writes a Cloud-Optimised GeoTIFF (internal tiles and
         overviews) that web maps, QGIS and cloud storage can stream.
         """
         if self.profile is None:
@@ -236,8 +236,12 @@ class Result:
         extra = None
         if with_confidence:
             names += ["ERRSCALE_" + b for b in BANDS] + ["SUPPORT"]
-            extra = np.concatenate([self.confidence, self.support[None].astype(np.float32)])
-        geotiff.write(path, img, self.profile, self.metadata["scale"], names, extra=extra, cog=cog)
+            conf = self.confidence.astype(np.float32)
+            if self.valid is not None:
+                conf = conf.copy()
+                conf[:, ~self.valid] = np.nan
+            extra = np.concatenate([conf, self.support[None].astype(np.float32)])
+        geotiff.write(path, img, self.profile, self.metadata["scale"], names, extra=extra, cog=cog, nodata=float("nan"))
         return path
 
     def quicklook(self, path=None, panels=("input", "image", "support"), width_in: float = 12.0):
