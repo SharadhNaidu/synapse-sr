@@ -12,7 +12,7 @@ import torch
 import torch.nn.functional as F
 
 from synapse_sr import memory, ui
-from synapse_sr.data import offset_present
+from synapse_sr.data import SCL_INVALID, offset_present
 from synapse_sr.io import geotiff
 from synapse_sr.io.sentinel2 import select_bands, to_reflectance
 from synapse_sr.models import baseline, projector
@@ -25,7 +25,6 @@ from synapse_sr.pretrained import download, registry
 from synapse_sr.result import Result
 
 SCALE = 5
-SCL_INVALID = (0, 1, 3, 8, 9, 10)          # no data, saturated/defective, cloud shadow, cloud medium/high, cirrus
 DISCREPANCY = 4.0                           # tau units; Flash default, see super_resolve(discrepancy=)
 CLAMP = (0.0, 1.5)                          # physical reflectance range of the output
 SUPPORT_T = (3.0, 10.0)                    # |prior| / tau_b: below 3 HIGH, 3-10 MEDIUM, above LOW (heuristic)

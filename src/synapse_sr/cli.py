@@ -94,6 +94,8 @@ def main(argv=None):
                                                        "(needs synapse-sr[stac]); OUTPUT is then the only positional")
     ap.add_argument("--dates", metavar="START:END", help="date range for --fetch, e.g. 2025-01-01:2025-03-15 (default: last 90 days)")
     ap.add_argument("--size-m", type=float, default=2000.0, help="edge of the --fetch area in metres (default 2000)")
+    ap.add_argument("--rank", choices=["local", "scene"], default="local",
+                    help="--fetch scene choice: fewest clouds over the area (local, default) or over the whole tile")
     ap.add_argument("--cog", action="store_true", help="write a Cloud-Optimised GeoTIFF (tiles + overviews)")
     ap.add_argument("--preview", metavar="PNG", help="also save a side-by-side 10 m / 2 m / support preview image (a folder of PNGs in folder mode)")
     ap.add_argument("--model", default="flash",
@@ -171,15 +173,18 @@ def _numbers(text, n, kind, usage):
 def _fetch(a):
     import datetime as dt
     from synapse_sr import fetch_sentinel2
-    lat, lon = (float(v) for v in a.fetch.split(","))
+    lat, lon = _numbers(a.fetch, 2, float, "--fetch LAT,LON (e.g. 12.92,77.50)")
     if a.dates:
-        start, end = a.dates.split(":")
+        parts = a.dates.split(":")
+        if len(parts) != 2:
+            raise ValueError(f"expected --dates START:END (e.g. 2025-01-01:2025-03-15), got {a.dates!r}")
+        start, end = parts
     else:
         today = dt.date.today()
         start, end = str(today - dt.timedelta(days=90)), str(today)
     out = os.path.splitext(a.output)[0] + "_s2_10m.tif"
     print(f"synapse-sr: fetching Sentinel-2 L2A at {lat}, {lon} ({start} .. {end})", file=sys.stderr)
-    return fetch_sentinel2(lat, lon, start, end, size_m=a.size_m, out=out)
+    return fetch_sentinel2(lat, lon, start, end, size_m=a.size_m, out=out, rank=a.rank)
 
 
 def _run(a):
