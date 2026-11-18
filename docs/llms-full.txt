@@ -1966,6 +1966,63 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.4.3] - 2026-11-18
+
+Models, weights and default outputs are unchanged; the benchmark numbers of 0.4.1 still apply.
+
+### Added
+
+- `super_resolve(..., window=(row, col, height, width))` or `bounds=(left, bottom, right, top)` (CLI `--window`,
+  `--bounds`) processes part of a large GeoTIFF without reading the rest; the `_scl.tif` sidecar is read over the
+  same area.
+- `Result.load(path)` reopens a saved result. `.npz` saves now keep every layer (`x_base`, `prior`, `context`), the
+  georeference, consistency, metadata and calibration; GeoTIFFs store the run information in a `SYNAPSE_SR` tag.
+- `Result.to_xarray(dataset=True)`: an `xarray.Dataset` with every layer. With `rioxarray` installed the CRS and
+  transform are written the rioxarray way.
+- `synapse_sr.clear_cache()` releases the models `super_resolve` keeps loaded.
+- A memory check before any work: a scene whose 2 m output cannot fit raises a `MemoryError` that says how large a
+  part fits (`SYNAPSE_SR_PREFLIGHT=0` skips it).
+- `SYNAPSE_SR_MEMORY` (GB) sets the tiling budget on any device; `HF_ENDPOINT` points the weight download at a
+  mirror; `SYNAPSE_OFFLINE=1` (or `HF_HUB_OFFLINE=1`) never downloads.
+- `fetch_sentinel2(..., rank="local")` (default, CLI `--rank`) picks the scene with the fewest cloud, shadow and
+  no-data pixels over the requested area, not over the whole tile, and records that fraction in the
+  `AREA_INVALID_FRACTION` tag.
+- `super_resolve_folder(..., with_confidence=, preview_dir=, verbose=)`.
+- Python 3.13 and 3.14 in the classifiers and in continuous integration; CLI and edge-case test suites.
+
+### Changed
+
+- The CPU tiling budget is half the available RAM, at most 6 GB as before, so 8 GB laptops and Colab no longer
+  plan tiles for memory they do not have.
+- Flash picks Apple MPS automatically when there is no CUDA GPU; if an operation is missing there it warns once and
+  finishes on the CPU. `device="mps"` still raises.
+- Weight downloads retry up to four times and resume an interrupted file. The SHA-256 of a cached checkpoint is
+  remembered next to it and recomputed only when the file changes (a small saving: the checkpoints are 12-58 MB).
+- `synapse-sr[all]` adds `rioxarray`, `psutil`, `openvino` and `onnxruntime` (the latter not on Intel Macs);
+  `synapse-sr[xarray]` adds `rioxarray`.
+- Folder runs process `.tif` and `.tiff` in any letter case.
+- Python 3.8 is no longer declared as supported (`requires-python >= 3.9`); it was not tested since 0.4.0.
+
+### Fixed
+
+- `synapse-sr folder/ out/ --json` printed its per-file lines on stdout, so the JSON could not be parsed; they go to
+  stderr now.
+- `--no-confidence`, `--preview` and `--quiet` were ignored in folder mode.
+- A failing OpenVINO / ONNX Runtime / TensorRT window silently fell back to PyTorch. It still falls back (same
+  model) but warns once and counts the windows in `metadata["detail_backend_fallbacks"]`.
+- An SCL raster finer than the scene crashed, and the SCL scale was taken from the height only. Coarser SCL is
+  sampled nearest, finer SCL marks a pixel invalid when any SCL pixel inside it is, and a different aspect ratio
+  raises.
+- Saved GeoTIFFs wrote NaN for invalid pixels without declaring it as NoData, so GIS software showed them as
+  pixels; NaN is now the declared NoData, and `ERRSCALE_*` is NaN there too.
+- `change()` compared only array shapes: two scenes of the same size in different places were differenced. It now
+  requires the same CRS and geotransform.
+- Reflectance input with a few pixels above 2 (hot or saturated pixels) was taken for DN and divided by 10000.
+  Float input is now judged on its 99.9th percentile and integer input is always DN.
+- `--fetch` / `fetch_sentinel2` now reject swapped or out-of-range coordinates, malformed or reversed dates and
+  dates before Sentinel-2, before any download.
+- Weight downloads cut off without a network error were accepted as complete (and then failed the checksum).
+
 ## [0.4.2] - 2026-11-18
 
 ### Added
