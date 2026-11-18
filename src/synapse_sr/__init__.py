@@ -64,14 +64,17 @@ def super_resolve(src, model="flash", weights=None, device=None, backend=None, b
 
 
 def super_resolve_folder(src_dir, out_dir, model="flash", pattern="*.tif", overwrite=False, cog=False,
-                         weights=None, device=None, backend=None, backend_device=None, **kwargs):
+                         weights=None, device=None, backend=None, backend_device=None, with_confidence=True,
+                         preview_dir=None, verbose=True, **kwargs):
     """Super-resolve every GeoTIFF in ``src_dir`` into ``out_dir`` (same file names), loading the model once.
 
     Scene-classification sidecars (``*_scl.tif``) are used as cloud masks, not processed. Existing outputs are
     skipped unless ``overwrite=True``. A file that fails is reported and the rest continue. Returns one summary dict
     per input (``"output"``, ``"seconds"``, consistency, support fractions, or ``"error"``).
 
-    ``backend`` / ``backend_device`` attach an optional accelerator, as in :func:`load`.
+    ``backend`` / ``backend_device`` attach an optional accelerator, as in :func:`load`. ``with_confidence=False``
+    writes the four reflectance bands only, ``preview_dir`` also saves a ``<name>.png`` quicklook per scene and
+    ``verbose=False`` silences the per-file lines (written to stderr).
     """
     import pathlib
     import sys
@@ -80,6 +83,9 @@ def super_resolve_folder(src_dir, out_dir, model="flash", pattern="*.tif", overw
     if not files:
         raise FileNotFoundError(f"no files matching {pattern!r} in {src_dir}")
     out_dir.mkdir(parents=True, exist_ok=True)
+    if preview_dir is not None:
+        preview_dir = pathlib.Path(preview_dir)
+        preview_dir.mkdir(parents=True, exist_ok=True)
     m = load(model, weights, device, backend, backend_device)
     report = []
     for i, f in enumerate(files, 1):
@@ -89,9 +95,13 @@ def super_resolve_folder(src_dir, out_dir, model="flash", pattern="*.tif", overw
             continue
         try:
             r = m.super_resolve(f, **kwargs)
-            r.save(dst, cog=cog)
+            r.save(dst, with_confidence=with_confidence, cog=cog)
+            if preview_dir is not None:
+                import matplotlib.pyplot as plt
+                plt.close(r.quicklook(preview_dir / (f.stem + ".png")))
             report.append(dict(r.summary(print_=False), input=str(f), output=str(dst)))
         except Exception as e:                           # keep going: one bad file must not stop a batch
             report.append({"input": str(f), "error": f"{type(e).__name__}: {e}"})
-        print(f"synapse-sr: {i}/{len(files)} {f.name} -> {report[-1].get('error') or dst}", file=sys.stderr, flush=True)
+        if verbose:
+            print(f"synapse-sr: {i}/{len(files)} {f.name} -> {report[-1].get('error') or dst}", file=sys.stderr, flush=True)
     return report
