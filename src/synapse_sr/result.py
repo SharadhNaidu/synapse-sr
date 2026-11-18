@@ -1,5 +1,6 @@
 """Container for a super-resolved scene."""
 
+import json
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -10,6 +11,31 @@ from synapse_sr.io import geotiff
 BANDS = ("B04", "B03", "B02", "B08")
 CONTEXT_BANDS = ("B05", "B06", "B07", "B8A", "B11", "B12")
 MIN_SUM = 0.002                    # reflectance; below this a normalised difference is noise, not signal
+
+
+def _plain(v):
+    if isinstance(v, np.generic):
+        return v.item()
+    if isinstance(v, np.ndarray):
+        return v.tolist()
+    return str(v)
+
+
+def _profile_out(p):
+    if p is None:
+        return None
+    return {"crs": p["crs"].to_wkt() if p.get("crs") is not None else None, "transform": list(p["transform"])[:6],
+            "height": p["height"], "width": p["width"]}
+
+
+def _profile_in(d):
+    if d is None:
+        return None
+    from affine import Affine
+    from rasterio.crs import CRS
+    return {"driver": "GTiff", "crs": CRS.from_wkt(d["crs"]) if d["crs"] else None,
+            "transform": Affine(*d["transform"]), "height": d["height"], "width": d["width"], "count": 10,
+            "dtype": "float32", "nodata": None}
 
 
 @dataclass(repr=False)
@@ -222,13 +248,15 @@ class Result:
         Invalid pixels are written as NaN and the file declares NaN as its NoData value. ``cog=True`` writes a Cloud-Optimised GeoTIFF (internal tiles and
         overviews) that web maps, QGIS and cloud storage can stream.
         """
-        if self.profile is None:
-            if not str(path).lower().endswith(".npz"):
-                raise ValueError("this result came from an array without georeferencing, so it cannot be written as a "
-                                 "GeoTIFF: save it as .npz, or pass a GeoTIFF path to super_resolve")
-            np.savez_compressed(path, image=self.image, confidence=self.confidence, support=self.support,
-                                valid=self.valid)
+        if str(path).lower().endswith(".npz"):
+            arrays = {k: getattr(self, k) for k in ("image", "confidence", "support", "valid", "x_base", "prior",
+                                                    "context") if getattr(self, k) is not None}
+            info = dict(self._info(), profile=_profile_out(self.profile))
+            np.savez_compressed(path, **arrays, info=np.array(json.dumps(info, default=_plain)))
             return path
+        if self.profile is None:
+            raise ValueError("this result came from an array without georeferencing, so it cannot be written as a "
+                             "GeoTIFF: save it as .npz, or pass a GeoTIFF path to super_resolve")
         img = self.image.copy()
         if self.valid is not None:
             img[:, ~self.valid] = np.nan
@@ -241,8 +269,43 @@ class Result:
                 conf = conf.copy()
                 conf[:, ~self.valid] = np.nan
             extra = np.concatenate([conf, self.support[None].astype(np.float32)])
-        geotiff.write(path, img, self.profile, self.metadata["scale"], names, extra=extra, cog=cog, nodata=float("nan"))
+        geotiff.write(path, img, self.profile, self.metadata["scale"], names, extra=extra, cog=cog, nodata=float("nan"),
+                      tags={"SYNAPSE_SR": json.dumps(self._info(), default=_plain)})
         return path
+
+    def _info(self):
+        from synapse_sr import __version__
+        return {"version": __version__, "gsd": self.gsd, "consistency": self.consistency, "metadata": self.metadata,
+                "calibration": self.calibration}
+
+    @classmethod
+    def load(cls, path) -> "Result":
+        """Reopen a result written by :meth:`save`. A ``.npz`` restores everything; a GeoTIFF restores the image,
+        error scale, support, validity, georeference, consistency, metadata and calibration (``x_base``, ``prior``
+        and ``context`` are not stored in GeoTIFFs and come back as ``None``)."""
+        if str(path).lower().endswith(".npz"):
+            with np.load(path, allow_pickle=False) as z:
+                info = json.loads(str(z["info"]))
+                arrays = {k: z[k] for k in z.files if k != "info"}
+            return cls(consistency=info["consistency"], gsd=info["gsd"], metadata=info["metadata"],
+                       calibration=info.get("calibration"), profile=_profile_in(info.get("profile")), **arrays)
+        arr, prof, names, tags = geotiff.read(path)
+        info = json.loads(tags["SYNAPSE_SR"]) if "SYNAPSE_SR" in tags else None
+        if info is None or not names or tuple(names[:4]) != BANDS:
+            raise ValueError(f"{path} was not written by synapse-sr Result.save")
+        meta = info["metadata"]
+        s = meta.get("scale", 5)
+        from affine import Affine
+        prof.update(transform=prof["transform"] * Affine.scale(s), height=prof["height"] // s,
+                    width=prof["width"] // s, count=10, nodata=None)
+        image = arr[:4].astype(np.float32)
+        valid = np.isfinite(image).all(0)
+        conf = support = None
+        if "SUPPORT" in names:
+            conf = arr[[names.index("ERRSCALE_" + b) for b in BANDS]].astype(np.float32)
+            support = np.nan_to_num(arr[names.index("SUPPORT")]).astype(np.uint8)
+        return cls(image=np.nan_to_num(image), confidence=conf, consistency=info["consistency"], gsd=info["gsd"],
+                   metadata=meta, profile=prof, support=support, valid=valid, calibration=info.get("calibration"))
 
     def quicklook(self, path=None, panels=("input", "image", "support"), width_in: float = 12.0):
         """Side-by-side preview: ``"input"`` (the 10 m measurement, shown with its real 10 m pixels), ``"image"``

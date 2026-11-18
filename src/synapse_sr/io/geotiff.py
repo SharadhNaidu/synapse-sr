@@ -56,7 +56,7 @@ def scaled_transform(transform, scale):
     return transform * Affine.scale(1.0 / scale)
 
 
-def write(path, image, profile, scale, band_names=None, extra=None, cog=False, nodata=None):
+def write(path, image, profile, scale, band_names=None, extra=None, cog=False, nodata=None, tags=None):
     rio = _rasterio()
     image = np.asarray(image, np.float32)
     if extra is not None:
@@ -70,6 +70,8 @@ def write(path, image, profile, scale, band_names=None, extra=None, cog=False, n
         if band_names:
             for i, n in enumerate(band_names, 1):
                 dst.set_band_description(i, n)
+        if tags:
+            dst.update_tags(**tags)
     if cog:
         to_cog(path)
 
