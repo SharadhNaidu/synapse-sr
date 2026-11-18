@@ -431,6 +431,7 @@ class Pro:
             scl_used = os.fspath(scl) if _is_path(scl) else "array"
             valid &= ~_scl_invalid(sc, valid.shape)
 
+        memory.preflight(*arr.shape[1:], self.device, context)
         y10 = torch.tensor(to_reflectance(arr, offset=offset), dtype=torch.float32, device=self.device)[None]
         kind = self._backend(y10)
         if halo is not None and tile is not None and halo >= tile:

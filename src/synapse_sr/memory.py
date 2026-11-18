@@ -65,3 +65,39 @@ def cpu_budget():
     if ram is None:
         return CPU_MAX
     return min(CPU_MAX, max(CPU_MIN, 0.5 * ram))
+
+
+DEVICE_BYTES_PER_PX = 3 * 4 * 25 * 4       # x, confidence, x_base: 4 bands of float32 on the 5x grid, per source pixel
+HOST_BYTES_PER_PX = 4 * 4 * 25 * 4 + 25 * 2 + 10 * 4    # image, confidence, x_base, prior + support / valid + input
+CONTEXT_BYTES_PER_PX = 6 * 25 * 2
+
+
+def estimate(H, W, context=True):
+    """(device bytes, host bytes) the output mosaic of an H x W source scene needs, excluding tile working memory."""
+    host = HOST_BYTES_PER_PX + (CONTEXT_BYTES_PER_PX if context else 0)
+    return float(DEVICE_BYTES_PER_PX * H * W), float(host * H * W)
+
+
+def preflight(H, W, device, context=True):
+    """Raise MemoryError before any work when the output of an H x W scene clearly cannot fit.
+    ``SYNAPSE_SR_PREFLIGHT=0`` skips the check."""
+    if os.environ.get("SYNAPSE_SR_PREFLIGHT", "1") in ("0", "false", "no"):
+        return
+    dev, host = estimate(H, W, context)
+    need, have, where = host + (dev if device.type != "cuda" else 0), available_ram(), "RAM"
+    if device.type == "cuda":
+        import torch
+        idx = device.index if device.index is not None else torch.cuda.current_device()
+        free = float(torch.cuda.mem_get_info(idx)[0])
+        if dev > 0.9 * free:
+            _fail(H, W, dev, free, "free GPU memory")
+    if have is not None and need > 0.9 * have:
+        _fail(H, W, need, have, f"available {where}")
+
+
+def _fail(H, W, need, have, where):
+    side = int((0.9 * have / (need / (H * W))) ** 0.5)
+    raise MemoryError(f"a {H} x {W} px scene needs about {need / 1e9:.1f} GB for its 2 m output but only "
+                      f"{have / 1e9:.1f} GB of {where} is there. Process it in parts of at most ~{side} x {side} px, "
+                      f"pass context=False, or set "
+                      f"SYNAPSE_SR_PREFLIGHT=0 to try anyway.")
