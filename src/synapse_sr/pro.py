@@ -110,6 +110,8 @@ class Pro:
         self._fast = None
         self._accel = None
         self._accel_name = "pytorch"
+        self._fallbacks = 0
+        self._warned = False
 
     def __repr__(self):
         return (f"{type(self).__name__}(name={self.meta.get('name', 'local')!r}, device={str(self.device)!r}, "
@@ -181,10 +183,14 @@ class Pro:
             if self._accel is not None:
                 try:
                     return self._accel(y)
-                except Exception:
-                    # Shapes below the exported minimum (or batch > 1) fall
-                    # back to PyTorch; the output is the same model.
-                    pass
+                except Exception as e:                # same model in PyTorch; counted and reported, never hidden
+                    self._fallbacks += 1
+                    if not self._warned:
+                        self._warned = True
+                        warnings.warn(f"{self._accel_name} failed on a {tuple(y.shape)} window "
+                                      f"({type(e).__name__}: {e}); running it in PyTorch instead. "
+                                      "metadata['detail_backend_fallbacks'] counts such windows.",
+                                      RuntimeWarning, stacklevel=2)
             if amp is not None:
                 with torch.autocast("cuda", dtype=amp):
                     return self.model(y)
@@ -285,6 +291,7 @@ class Pro:
         self._fast = None
         self._accel = None
         self._accel_name = "pytorch"
+        self._warned = False
         return self
 
     def _physics(self):
@@ -365,6 +372,7 @@ class Pro:
     def _run(self, src, band_names, scl, nodata, offset, tile, halo, context, batch, bar, callback, discrepancy, tta, restore_mean):
         if bar:
             bar.stage("reading input")
+        self._fallbacks = 0
         profile, tags = None, {}
         if _is_path(src):
             arr, profile, names, tags = geotiff.read(src)
@@ -496,7 +504,7 @@ class Pro:
         support[clamped[0].any(0).cpu().numpy()] = 0
         gsd = abs(profile["transform"].a) / SCALE if profile else 10.0 / SCALE
         meta = {"scale": SCALE, "model": self.meta.get("name", "local"), "scan_backend": kind,
-                "detail_backend": self._accel_name,
+                "detail_backend": self._accel_name, "detail_backend_fallbacks": self._fallbacks,
                 "precision": "bfloat16" if amp is not None else "float32", "tile": tile, "halo": halo,
                 "lambda": lam.tolist(), "discrepancy_tau": discrepancy, "tta": bool(tta), "restore_mean": bool(restore_mean), "bands": list(self.op.bands),
                 "support_classes": {"2": "HIGH: observation-determined", "1": "MEDIUM",
