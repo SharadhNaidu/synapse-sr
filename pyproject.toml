@@ -42,12 +42,20 @@ dependencies = [
 
 [project.optional-dependencies]
 stac = ["pystac-client>=0.6"]
-xarray = ["xarray>=0.20"]
+xarray = ["xarray>=0.20", "rioxarray>=0.13"]
 cuda = ["mamba-ssm>=1.1"]
 openvino = ["openvino>=2024.4"]
 onnx = ["onnxruntime>=1.17", "onnxscript>=0.1"]
 onnx-gpu = ["onnxruntime-gpu>=1.17", "onnxscript>=0.1"]
-all = ["pystac-client>=0.6", "xarray>=0.20"]
+all = [
+  "pystac-client>=0.6",
+  "xarray>=0.20",
+  "rioxarray>=0.13",
+  "psutil>=5",
+  "openvino>=2024.4",
+  "onnxruntime>=1.17; not (sys_platform == 'darwin' and platform_machine == 'x86_64')",   # no current Intel-Mac wheels
+  "onnxscript>=0.1; not (sys_platform == 'darwin' and platform_machine == 'x86_64')",
+]
 test = ["pytest>=7", "pytest-cov>=4", "xarray>=0.20"]
 docs = ["mkdocs>=1.6,<2", "mkdocs-material>=9.5,<10", "mkdocstrings[python]>=0.24"]
 
