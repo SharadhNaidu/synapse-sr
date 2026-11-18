@@ -62,6 +62,12 @@ def _as_array(src, band_names):
     return arr, band_names
 
 
+def _area(profile):
+    """(left, bottom, right, top) of a profile's grid."""
+    from rasterio.transform import array_bounds
+    return array_bounds(profile["height"], profile["width"], profile["transform"])
+
+
 def _validate_profile(profile):
     t = profile["transform"]
     if abs(t.b) > 1e-9 or abs(t.d) > 1e-9:
@@ -329,7 +335,8 @@ class Pro:
                       context: bool = True, batch: Optional[int] = None,
                       progress: Union[bool, str, Callable[[int, int], None]] = "auto",
                       discrepancy: Optional[float] = None, tta: bool = False,
-                      restore_mean: Optional[bool] = None) -> Result:
+                      restore_mean: Optional[bool] = None, window: Optional[Sequence[int]] = None,
+                      bounds: Optional[Sequence[float]] = None) -> Result:
         """Super-resolve one Sentinel-2 scene.
 
         Parameters
@@ -372,6 +379,10 @@ class Pro:
             adds no fine structure; it is counted in ``x_base``, not ``prior``. On by default for Flash (lower spectral
             and reflectance error, higher detail correlation); off by default for Pro, whose tight fit already
             matches the measurement.
+        window, bounds:
+            Process only part of a GeoTIFF without reading the rest: ``window=(row_off, col_off, height, width)`` in
+            source pixels, or ``bounds=(left, bottom, right, top)`` in the raster's CRS. The output is georeferenced to
+            that part; an ``_scl.tif`` sidecar (or ``scl=`` path) is read over the same area.
 
         Returns
         -------
@@ -386,19 +397,22 @@ class Pro:
         t0 = time.time()
         with (ui.RunProgress(type(self).__name__) if show else contextlib.nullcontext()) as bar:
             r = self._run(src, band_names, scl, nodata, offset, tile, halo, context, batch, bar, callback, discrepancy, tta,
-                          restore_mean)
+                          restore_mean, window, bounds)
         r.metadata["seconds"] = round(time.time() - t0, 3)
         if show:
             bar.done(r, r.metadata["seconds"])
         return r
 
-    def _run(self, src, band_names, scl, nodata, offset, tile, halo, context, batch, bar, callback, discrepancy, tta, restore_mean):
+    def _run(self, src, band_names, scl, nodata, offset, tile, halo, context, batch, bar, callback, discrepancy, tta, restore_mean,
+             window=None, bounds=None):
         if bar:
             bar.stage("reading input")
         self._fallbacks = 0
         profile, tags = None, {}
+        if (window is not None or bounds is not None) and not _is_path(src):
+            raise ValueError("window= / bounds= need a GeoTIFF path; slice an array input directly")
         if _is_path(src):
-            arr, profile, names, tags = geotiff.read(src)
+            arr, profile, names, tags = geotiff.read(src, window, bounds)
             band_names = band_names or names
             _validate_profile(profile)
             nodata = profile.get("nodata") if nodata is None else nodata
@@ -427,7 +441,13 @@ class Pro:
         valid &= ~(arr == 0).all(0)
         scl_used = None
         if scl is not None:
-            sc = geotiff.read(scl)[0][0] if _is_path(scl) else np.asarray(scl)
+            if _is_path(scl):
+                area = _area(profile) if (window is not None or bounds is not None) else None
+                sc = geotiff.read(scl, bounds=area)[0][0]
+            elif window is not None or bounds is not None:
+                raise ValueError("with window= / bounds=, pass scl as a path (or None) so it can be read over the same area")
+            else:
+                sc = np.asarray(scl)
             scl_used = os.fspath(scl) if _is_path(scl) else "array"
             valid &= ~_scl_invalid(sc, valid.shape)
 

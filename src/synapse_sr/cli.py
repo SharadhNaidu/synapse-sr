@@ -105,6 +105,8 @@ def main(argv=None):
     ap.add_argument("--backend-device", help="OpenVINO device (CPU, GPU) or ONNX Runtime provider (cpu, cuda, rocm)")
     ap.add_argument("--scl", default="auto", help="scene classification raster; 'auto' uses <input>_scl.tif, 'none' disables")
     ap.add_argument("--offset", type=float, help="DN offset, e.g. -1000 for baseline >= 04.00 (default: BOA_ADD_OFFSET tag or 0)")
+    ap.add_argument("--window", metavar="ROW,COL,H,W", help="process only this pixel window of the input")
+    ap.add_argument("--bounds", metavar="L,B,R,T", help="process only this area (left,bottom,right,top in the input CRS)")
     ap.add_argument("--tile", type=int, help="tile size in source pixels")
     ap.add_argument("--halo", type=int, help="tile context halo in source pixels (default 16, below the tile size)")
     ap.add_argument("--batch", type=int, help="tiles per forward pass (lower it if memory is short)")
@@ -156,6 +158,16 @@ def _fail(msg, code=1):
     return code
 
 
+def _numbers(text, n, kind, usage):
+    try:
+        vals = [kind(v) for v in text.split(",")]
+    except ValueError:
+        vals = []
+    if len(vals) != n:
+        raise ValueError(f"expected {usage}, got {text!r}")
+    return vals
+
+
 def _fetch(a):
     import datetime as dt
     from synapse_sr import fetch_sentinel2
@@ -173,6 +185,10 @@ def _fetch(a):
 def _run(a):
     from synapse_sr import load, super_resolve_folder, ui
     kw = dict(scl=None if str(a.scl).lower() == "none" else a.scl, offset=a.offset, tile=a.tile, halo=a.halo, batch=a.batch)
+    if a.window:
+        kw["window"] = _numbers(a.window, 4, int, "--window ROW,COL,H,W")
+    if a.bounds:
+        kw["bounds"] = _numbers(a.bounds, 4, float, "--bounds L,B,R,T")
     if os.path.isdir(a.input):
         if a.preview:
             import matplotlib

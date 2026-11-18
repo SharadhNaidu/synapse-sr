@@ -98,6 +98,6 @@ def preflight(H, W, device, context=True):
 def _fail(H, W, need, have, where):
     side = int((0.9 * have / (need / (H * W))) ** 0.5)
     raise MemoryError(f"a {H} x {W} px scene needs about {need / 1e9:.1f} GB for its 2 m output but only "
-                      f"{have / 1e9:.1f} GB of {where} is there. Process it in parts of at most ~{side} x {side} px, "
-                      f"pass context=False, or set "
+                      f"{have / 1e9:.1f} GB of {where} is there. Process it in parts of at most ~{side} x {side} px "
+                      f"(super_resolve(..., window=...) or bounds=, CLI --window / --bounds), pass context=False, or set "
                       f"SYNAPSE_SR_PREFLIGHT=0 to try anyway.")

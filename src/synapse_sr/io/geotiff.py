@@ -9,13 +9,45 @@ def _rasterio():
     return rasterio
 
 
-def read(path):
-    """-> (array (C, H, W), profile, band names or None, dataset tags)."""
+def window(path, window=None, bounds=None):
+    """A rasterio Window inside ``path`` from ``window`` ((row_off, col_off, height, width) or a Window) or
+    ``bounds`` ((left, bottom, right, top) in the raster's CRS), clipped to the raster; None when neither is given."""
+    if window is None and bounds is None:
+        return None
+    if window is not None and bounds is not None:
+        raise ValueError("pass window= or bounds=, not both")
     rio = _rasterio()
+    from rasterio.windows import Window, from_bounds
     with rio.open(path) as src:
-        arr = src.read()
+        if bounds is not None:
+            left, bottom, right, top = bounds
+            if right <= left or top <= bottom:
+                raise ValueError(f"bounds must be (left, bottom, right, top), got {tuple(bounds)}")
+            w = from_bounds(left, bottom, right, top, src.transform)
+        else:
+            w = window if isinstance(window, Window) else Window(window[1], window[0], window[3], window[2])
+        w = w.round_offsets().round_lengths()
+        try:
+            w = w.intersection(Window(0, 0, src.width, src.height))
+        except Exception:
+            raise ValueError(f"the requested area {w} lies outside the {src.height} x {src.width} px raster") from None
+    if w.width < 1 or w.height < 1:
+        raise ValueError(f"the requested area {w} is empty")
+    return w
+
+
+def read(path, window=None, bounds=None):
+    """-> (array (C, H, W), profile, band names or None, dataset tags). ``window`` / ``bounds`` read a sub-area
+    (see :func:`window`); ``bounds`` may be in another raster's CRS only if both share it."""
+    rio = _rasterio()
+    win = globals()["window"](path, window, bounds)
+    with rio.open(path) as src:
+        arr = src.read(window=win)
+        prof = src.profile.copy()
+        if win is not None:
+            prof.update(height=int(win.height), width=int(win.width), transform=src.window_transform(win))
         names = [d.upper() if d else None for d in src.descriptions]
-        return arr, src.profile.copy(), (names if all(names) else None), src.tags()
+        return arr, prof, (names if all(names) else None), src.tags()
 
 
 def scaled_transform(transform, scale):
