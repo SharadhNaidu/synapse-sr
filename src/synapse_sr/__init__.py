@@ -63,10 +63,11 @@ def super_resolve(src, model="flash", weights=None, device=None, backend=None, b
     return _default[key].super_resolve(src, **kwargs)
 
 
-def super_resolve_folder(src_dir, out_dir, model="flash", pattern="*.tif", overwrite=False, cog=False,
+def super_resolve_folder(src_dir, out_dir, model="flash", pattern=None, overwrite=False, cog=False,
                          weights=None, device=None, backend=None, backend_device=None, with_confidence=True,
                          preview_dir=None, verbose=True, **kwargs):
     """Super-resolve every GeoTIFF in ``src_dir`` into ``out_dir`` (same file names), loading the model once.
+    By default every ``.tif`` / ``.tiff`` file (any case) is processed; ``pattern`` (a glob) narrows that.
 
     Scene-classification sidecars (``*_scl.tif``) are used as cloud masks, not processed. Existing outputs are
     skipped unless ``overwrite=True``. A file that fails is reported and the rest continue. Returns one summary dict
@@ -79,9 +80,10 @@ def super_resolve_folder(src_dir, out_dir, model="flash", pattern="*.tif", overw
     import pathlib
     import sys
     src_dir, out_dir = pathlib.Path(src_dir), pathlib.Path(out_dir)
-    files = sorted(f for f in src_dir.glob(pattern) if not f.stem.lower().endswith("_scl"))
+    found = src_dir.glob(pattern) if pattern else (f for f in src_dir.iterdir() if f.suffix.lower() in (".tif", ".tiff"))
+    files = sorted(f for f in found if f.is_file() and not f.stem.lower().endswith("_scl"))
     if not files:
-        raise FileNotFoundError(f"no files matching {pattern!r} in {src_dir}")
+        raise FileNotFoundError(f"no files matching {pattern or '*.tif / *.tiff'!r} in {src_dir}")
     out_dir.mkdir(parents=True, exist_ok=True)
     if preview_dir is not None:
         preview_dir = pathlib.Path(preview_dir)
