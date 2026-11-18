@@ -42,8 +42,8 @@ Install the PyTorch build that matches your hardware first if you need a specifi
 | Extra | Installs | Enables |
 |---|---|---|
 | `synapse-sr[stac]` | `pystac-client` | [`fetch_sentinel2`](guide/data.md) for downloading a scene |
-| `synapse-sr[xarray]` | `xarray` | `Result.to_xarray()` and xarray inputs |
-| `synapse-sr[all]` | both of the above | |
+| `synapse-sr[xarray]` | `xarray`, `rioxarray` | `Result.to_xarray()` (with CRS) and xarray inputs |
+| `synapse-sr[all]` | the above plus `psutil`, `openvino` and `onnxruntime` (not on Intel Macs, which have no current wheels) | |
 | `synapse-sr[cuda]` | `mamba-ssm` | the fused CUDA selective-scan kernel |
 | `synapse-sr[openvino]` | `openvino` | OpenVINO CPU/GPU backend for Flash |
 | `synapse-sr[onnx]` | `onnxruntime`, `onnxscript` | ONNX Runtime CPU backend for Flash |

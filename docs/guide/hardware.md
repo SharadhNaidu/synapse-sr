@@ -86,7 +86,9 @@ Install the ROCm build of PyTorch. PyTorch exposes it through the same `device="
 
 ## Apple MPS
 
-Install the MPS build of PyTorch and pass `device="mps"`. Flash is the recommended path. Pro runs, but its scan is slow on MPS; use Flash on a laptop.
+Install the MPS build of PyTorch. Flash picks MPS automatically when no CUDA GPU is present; if an operation is
+missing on MPS it warns once and finishes on the CPU. Pass `device="mps"` to force MPS (errors are raised then).
+Flash is the recommended path. Pro runs, but its scan is slow on MPS; use Flash on a laptop.
 
 ```python
 result = synapse_sr.super_resolve("scene.tif", device="mps")

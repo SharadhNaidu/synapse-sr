@@ -163,7 +163,7 @@ description: Install SYNAPSE-SR (synapse-sr) with pip on Windows, macOS, Linux, 
 
 | | |
 |---|---|
-| Python | 3.8 or newer |
+| Python | 3.9 or newer |
 | PyTorch | 1.13 or newer (CPU or CUDA build) |
 | Other | `numpy`, `scipy`, `safetensors`, `rasterio`, `affine`, `rich`, installed automatically |
 
@@ -197,9 +197,12 @@ Install the PyTorch build that matches your hardware first if you need a specifi
 | Extra | Installs | Enables |
 |---|---|---|
 | `synapse-sr[stac]` | `pystac-client` | [`fetch_sentinel2`](guide/data.md) for downloading a scene |
-| `synapse-sr[xarray]` | `xarray` | `Result.to_xarray()` and xarray inputs |
-| `synapse-sr[all]` | both of the above | |
+| `synapse-sr[xarray]` | `xarray`, `rioxarray` | `Result.to_xarray()` (with CRS) and xarray inputs |
+| `synapse-sr[all]` | the above plus `psutil`, `openvino` and `onnxruntime` (not on Intel Macs, which have no current wheels) | |
 | `synapse-sr[cuda]` | `mamba-ssm` | the fused CUDA selective-scan kernel |
+| `synapse-sr[openvino]` | `openvino` | OpenVINO CPU/GPU backend for Flash |
+| `synapse-sr[onnx]` | `onnxruntime`, `onnxscript` | ONNX Runtime CPU backend for Flash |
+| `synapse-sr[onnx-gpu]` | `onnxruntime-gpu`, `onnxscript` | ONNX Runtime CUDA/TensorRT backend for Flash |
 
 ## Platforms
 
@@ -655,6 +658,174 @@ All three agree to about 1e-5 relative error, and `result.metadata["scan_backend
 
 ---
 
+<!-- guide/hardware.md -->
+
+---
+description: Supported hardware and inference runtimes for synapse-sr, including NVIDIA CUDA, AMD ROCm, Apple MPS, Intel OpenVINO, ONNX Runtime and TensorRT.
+---
+
+# Hardware compatibility
+
+Synapse SR runs on any device PyTorch supports. Flash can also run its detail network through OpenVINO or ONNX Runtime.
+
+The pipeline has two parts: the detail network and the physics baseline plus null-space projector. The accelerated backends replace the network forward only; the physics stays in PyTorch, so the output is unchanged apart from floating-point rounding. On small scenes the physics can dominate, so a faster network does not always mean a faster scene.
+
+## Matrix
+
+| Runtime | Device | Flash | Pro | Status | Install |
+|---|---|---|---|---|---|
+| PyTorch | CPU | Yes | Yes | Tested | `pip install synapse-sr` |
+| PyTorch | NVIDIA CUDA | Yes | Yes | Tested (T4) | CUDA PyTorch build |
+| PyTorch | AMD ROCm | Yes | Yes | Preview | ROCm PyTorch build |
+| PyTorch | Apple MPS | Yes | Experimental | Preview | MPS PyTorch build |
+| OpenVINO | Intel CPU / GPU | Yes | No | Tested | `pip install "synapse-sr[openvino]"` |
+| ONNX Runtime | CPU | Yes | No | Tested | `pip install "synapse-sr[onnx]"` |
+| ONNX Runtime | NVIDIA CUDA | Yes | No | Tested (T4) | `pip install "synapse-sr[onnx-gpu]"` |
+| ONNX Runtime | AMD ROCm | Yes | No | Preview | ROCm build of ONNX Runtime |
+| ONNX Runtime | NVIDIA TensorRT | Yes | No | Tested (T4) | `onnx-gpu` plus TensorRT |
+
+Pro's state-space scan is not exportable to ONNX, OpenVINO or TensorRT yet, so those backends support Flash only. Pro runs through native PyTorch on CPU, CUDA, ROCm and MPS.
+
+**Preview** means the code path is implemented and uses the same interface, but we have not validated it on that hardware. PyTorch CPU, OpenVINO CPU/Intel GPU, ONNX Runtime CPU, and the NVIDIA CUDA/TensorRT rows (on 2× T4) are tested. ROCm and MPS need community validation.
+
+The OpenVINO and ONNX Runtime backends need PyTorch 2.1 or newer for `torch.export`; the ONNX exporter is tested with PyTorch 2.6 and newer.
+
+The CLI uses the same switches:
+
+```bash
+synapse-sr in.tif out.tif --backend openvino --backend-device CPU
+synapse-sr in.tif out.tif --backend onnx --backend-device cuda
+```
+
+`synapse-sr --env` lists the installed runtimes and their devices/providers.
+
+## What stays the same
+
+Only the detail network moves. The physics baseline, null-space projector, support thresholds, calibration and every `Result` method stay in PyTorch, so these are backend-independent:
+
+- `x_base`, `prior`, `context`, `valid`
+- `consistency`
+- `support`, `confidence` (up to network precision)
+- `uncertainty()`, `interval()`
+- `indices()`, `boundaries()`, `change()`
+- `save()` and the GeoTIFF layout
+
+On a 320 × 320 urban scene, the full-pipeline comparison against PyTorch was:
+
+| Backend | Image max diff | Support agreement | Index max diff |
+|---|---|---|---|
+| OpenVINO CPU | 1.5e-7 | 100 % | 6e-7 |
+| OpenVINO Intel GPU | 6.2e-4 | 99.5 % | 2.5e-3 |
+| ONNX Runtime CPU | 1.2e-7 | 100 % | 6e-7 |
+
+The GPU difference is FP16 rounding, not a change in the pipeline. The support map is a thresholded quantity, so a 0.5 % class change on the GPU is expected; the underlying reflectance difference is still sub-milli-reflectance.
+
+## Validated on NVIDIA T4
+
+On 2× Tesla T4 (PyTorch 2.11.0+cu130, ONNX Runtime GPU 1.32.0, TensorRT 10.16.1), a 128 × 128 LR urban scene was run through the full pipeline:
+
+- Flash PyTorch CUDA: reference.
+- Flash ONNX Runtime CUDA: image delta 0, support agreement 100 %, all indices 0.
+- Flash TensorRT: image delta 0, support agreement 100 %, all indices 0, active provider `TensorrtExecutionProvider`.
+- Pro PyTorch CUDA: completed, 4 × 640 × 640, finite, all three support classes present.
+- Folder API and CLI with `--backend onnx --backend-device cuda`: both completed.
+
+TensorRT must be installed and its libraries on `LD_LIBRARY_PATH`. Without them, ONNX Runtime falls back to CUDA; `detail_backend` in the result metadata reports the provider that actually ran, not the one requested.
+
+## NVIDIA CUDA
+
+No extra step. Pass `device="cuda"`; the package uses the native PyTorch path, and Pro picks the Triton or fused scan when available.
+
+```python
+import synapse_sr
+
+result = synapse_sr.super_resolve("scene.tif", model="pro", device="cuda")
+```
+
+## AMD ROCm
+
+Install the ROCm build of PyTorch. PyTorch exposes it through the same `device="cuda"` name. The selective scan is pure PyTorch, so it runs on ROCm without a separate kernel.
+
+## Apple MPS
+
+Install the MPS build of PyTorch. Flash picks MPS automatically when no CUDA GPU is present; if an operation is
+missing on MPS it warns once and finishes on the CPU. Pass `device="mps"` to force MPS (errors are raised then).
+Flash is the recommended path. Pro runs, but its scan is slow on MPS; use Flash on a laptop.
+
+```python
+result = synapse_sr.super_resolve("scene.tif", device="mps")
+```
+
+## Intel OpenVINO
+
+OpenVINO accelerates the Flash network on Intel CPUs and Intel GPUs. Install the optional dependency:
+
+```bash
+pip install "synapse-sr[openvino]"
+```
+
+```python
+import synapse_sr
+
+flash = synapse_sr.load("flash")
+flash.enable_openvino("CPU")      # or "GPU" for an Intel GPU
+result = flash.super_resolve("scene.tif")
+```
+
+`device` accepts any OpenVINO device string (`"CPU"`, `"GPU"`, `"GPU.0"`, ...). The model is exported when `enable_openvino` is called and reused for every tile. The export uses dynamic height and width, so tiles of different sizes share one compiled model.
+
+## ONNX Runtime
+
+ONNX Runtime runs the Flash network from an ONNX graph. Install the CPU or GPU build:
+
+```bash
+pip install "synapse-sr[onnx]"       # CPU
+pip install "synapse-sr[onnx-gpu]"   # CUDA, TensorRT
+```
+
+For ROCm, use an ONNX Runtime build that includes `ROCMExecutionProvider`; the standard PyPI wheel does not.
+
+```python
+import synapse_sr
+
+flash = synapse_sr.load("flash")
+flash.enable_onnxruntime("cpu")      # "cuda", "rocm" or "tensorrt"
+result = flash.super_resolve("scene.tif")
+```
+
+The model is exported to ONNX when `enable_onnxruntime` is called. The graph uses dynamic height and width, so one session handles every tile size. CPU speed depends on the model and hardware, so measure it on your machine; the main reason to use ONNX Runtime is deployment flexibility and the CUDA, ROCm and TensorRT providers, not a guaranteed CPU win.
+
+## NVIDIA TensorRT
+
+TensorRT runs through the ONNX Runtime TensorRT execution provider. Install `onnxruntime-gpu` (the `onnx-gpu` extra) and the TensorRT libraries for your CUDA version, then:
+
+```python
+flash.enable_tensorrt(cache_dir="trt-cache")
+```
+
+The first run builds an engine for each tile shape. `cache_dir` keeps the engines so later runs skip the build. TensorRT needs an NVIDIA GPU; the provider falls back to CUDA or CPU with a warning if it is not available.
+
+## Not currently supported
+
+Intel XPU, Rockchip RKNN, Qualcomm QNN, Apple CoreML and Windows DirectML are not implemented. The physics solver is PyTorch, so an NPU backend would only accelerate the network, not the full pipeline.
+
+If you need one of these, the backend interface is small: a class that takes the Flash model, exposes `__call__(x) -> {"delta", "conf_logit"}`, and is wired into `Pro.enable_*`. Open an issue to discuss a pull request before writing a large backend.
+
+## Preview backends: help us validate them
+
+The ROCm and MPS rows are implemented but not validated by the maintainers. If you run one of them:
+
+- **It works?** Tell us the device, driver, package versions and whether the output matches the PyTorch path. A short note in an issue is enough.
+- **It fails?** Open an issue with the command, the traceback, the output of `synapse-sr --env`, and the backend and device you used.
+- **You have a fix?** Send a pull request. The backend files are small and the test files skip cleanly when the runtime is missing.
+- **You need help?** Reach out to the maintainers.
+
+- Issues: <https://github.com/SharadhNaidu/synapse-sr/issues>
+- Pull requests: <https://github.com/SharadhNaidu/synapse-sr/pulls>
+
+
+---
+
 <!-- guide/inputs.md -->
 
 # Inputs and preprocessing
@@ -756,8 +927,20 @@ result = synapse_sr.super_resolve("scene.tif")
 
 result.rgb()          # (5H, 5W, 3) uint8 true-colour quicklook, 2-98 % stretch
 result.ndvi()         # (5H, 5W) NDVI, NaN where invalid
-result.to_xarray()    # DataArray (band, y, x) with map coordinates (needs xarray)
+result.to_xarray()    # DataArray (band, y, x) with map coordinates and CRS (needs xarray; rioxarray optional)
+result.to_xarray(dataset=True)   # Dataset with every layer: reflectance, x_base, prior, support, valid, context ...
 result.save("out.tif")
+result.save("out.npz")           # everything, including x_base, prior and context
+```
+
+## Reopening a result
+
+```python
+from synapse_sr import Result
+
+r = Result.load("out.tif")       # image, error scale, support, valid, georeference, consistency, metadata
+r = Result.load("out.npz")       # all of the above plus x_base, prior and context
+r.indices()["ndvi"]; r.interval(0.9)
 ```
 
 ## Saved GeoTIFF
@@ -768,8 +951,12 @@ result.save("out.tif")
 | 5 to 8 | `ERRSCALE_B04` ... `ERRSCALE_B08` | predicted error scale |
 | 9 | `SUPPORT` | 2 / 1 / 0 |
 
-`save(path, with_confidence=False)` (CLI `--no-confidence`) writes bands 1 to 4 only. For array inputs without
-georeferencing, `save` writes a compressed `.npz`.
+NaN is declared as the file's NoData value, so QGIS, GDAL and rasterio mask invalid pixels automatically
+(`ERRSCALE_*` is NaN there too). The run's consistency, metadata and calibration are stored in the `SYNAPSE_SR`
+tag, which `Result.load` reads back.
+
+`save(path, with_confidence=False)` (CLI `--no-confidence`) writes bands 1 to 4 only. A path ending in `.npz`
+writes a compressed NumPy archive with every layer; array inputs without georeferencing can only be saved that way.
 
 The CRS is copied from the input. The geotransform keeps the input origin and divides the pixel size by five,
 so the output covers exactly the input bounds. Output pixel `5i + r` lies inside input pixel `i`, and `r = 2` is
@@ -850,8 +1037,10 @@ How tightly the physics baseline fits the measurement is set by `discrepancy`, i
 (0.5, the most recovered detail). Flash fits to about 4 units, which absorbs forward-model error (point-spread function,
 registration) instead of turning it into fine detail, and then restores every 10 m pixel's mean reflectance exactly
 with a smooth correction (`restore_mean`), so its values here are typically 5 to 15. Because one regularisation weight
-is shared by all bands, individual bands can sit a few units apart. Values above 20 trigger a warning: check the band
-order, the radiometric offset and that the input is L2A on the 10 m grid. The learned detail itself is invisible to this measurement by construction (it lies in the null space).
+is shared by all bands, individual bands can sit a few units apart. A band triggers a warning when its RMS exceeds
+`5 × max(discrepancy, 1)` noise units: 5 for Pro's tight 0.5, 20 for Flash's loose 4. The floor keeps a tight request
+from warning below 5 noise units. The warning names the offending bands and their values. Check the band order, the
+radiometric offset and that the input is L2A on the 10 m grid. The learned detail itself is invisible to this measurement by construction (it lies in the null space).
 The measurement is taken on the assembled mosaic, so tiling seams would show up here.
 
 
@@ -875,7 +1064,7 @@ result = model.super_resolve("large_scene.tif", tile=64, halo=16)
 
 | Parameter | Default | Meaning |
 |---|---|---|
-| `tile` | automatic: the largest tile that fits the free GPU memory (or a 6 GB RAM budget on CPU) | tile edge in 10 m source pixels |
+| `tile` | automatic: the largest tile that fits the free GPU memory (or half the available RAM, at most 6 GB, on CPU) | tile edge in 10 m source pixels |
 | `batch` | automatic on GPU (up to 8), 1 on CPU | tiles per forward pass |
 | `halo` | 16 (below `tile`) | extra context on each side, discarded after processing |
 
@@ -886,8 +1075,32 @@ single-window results agree to 0.4 % relative RMS in the interior. The package t
 ## Memory
 
 Peak memory grows with `(tile + 2 * halo)^2`. The automatic choice leaves headroom; if memory is still short, pass a
-smaller `tile` or `batch`. Larger tiles are faster: a 32-pixel tile with a 16-pixel halo computes four times its
-output area, a 96-pixel tile under twice.
+smaller `tile` or `batch`, or cap the budget with `SYNAPSE_SR_MEMORY=2` (GB). Larger tiles are faster: a 32-pixel
+tile with a 16-pixel halo computes four times its output area, a 96-pixel tile under twice.
+
+The whole 2 m output is held in memory: about 3.2 KB per 10 m input pixel (2.9 KB with `context=False`), so a
+1000 x 1000 px (10 km) scene needs about 3 GB and a full 110 km tile several hundred GB. Before any work,
+`super_resolve` compares this with the available RAM (and free GPU memory) and raises a `MemoryError` that says
+how large a part fits. `SYNAPSE_SR_PREFLIGHT=0` skips the check.
+
+## Part of a large scene
+
+Process one area of a large GeoTIFF without reading the rest of it:
+
+```python
+import synapse_sr
+
+part = synapse_sr.super_resolve("T43PGQ.tif", window=(2000, 3000, 1000, 1000))     # row, col, height, width
+area = synapse_sr.super_resolve("T43PGQ.tif", bounds=(770000, 1430000, 780000, 1440000))  # left, bottom, right, top
+```
+
+```bash
+synapse-sr T43PGQ.tif part_2m.tif --window 2000,3000,1000,1000
+synapse-sr T43PGQ.tif area_2m.tif --bounds 770000,1430000,780000,1440000
+```
+
+`bounds` are in the raster's CRS. The output is georeferenced to that part, and the `_scl.tif` sidecar (or an
+`scl=` path) is read over the same area, whatever its resolution.
 
 ## Throughput
 
@@ -935,7 +1148,16 @@ model = Pro.from_pretrained(weights="/opt/models/synapse-pro-v2.safetensors")
 ## Cache
 
 Downloaded weights are stored in `~/.cache/synapse`, or in `$SYNAPSE_CACHE` if set. They are verified by
-SHA-256 on every load. A corrupted or tampered file raises an error that names the expected and actual hashes.
+SHA-256 on every load (the hash is remembered in a `.sha256` file next to the checkpoint and recomputed whenever
+the file changes). A corrupted or tampered file raises an error that names the expected and actual hashes.
+
+An interrupted download is retried up to four times and resumes where it stopped; the partial `.part` file is
+kept, so the next run continues it.
+
+| Situation | Setting |
+|---|---|
+| Hugging Face blocked, a mirror is reachable | `HF_ENDPOINT=https://hf-mirror.com` |
+| Never touch the network | `SYNAPSE_OFFLINE=1` (or `HF_HUB_OFFLINE=1`): a checkpoint that is not cached raises instead of downloading |
 
 ## Your own checkpoints
 
@@ -969,10 +1191,15 @@ path = fetch_sentinel2(lat=30.935, lon=75.800, start="2024-11-01", end="2025-01-
 ```
 
 `fetch_sentinel2` searches the public [Earth Search](https://earth-search.aws.element84.com/v1) STAC catalogue.
-It picks the least-cloudy L2A scene over the point and writes:
+It checks the coordinates (`lat` first) and the dates, then picks the scene with the fewest cloud, shadow and
+no-data pixels over the requested area: it reads the scene classification of the six least-cloudy candidate
+scenes there (`rank="local"`, the default, CLI `--rank local`). `rank="scene"` keeps the scene with the lowest
+whole-tile cloud cover instead, with one read, but a mostly clear tile can still be cloudy over a small area.
+It writes:
 
 - a 10-band GeoTIFF in model order, with named bands, on the 10 m grid (20 m bands nearest-resampled);
-- the offset in the `BOA_ADD_OFFSET` tag, plus the STAC item id and cloud cover;
+- the offset in the `BOA_ADD_OFFSET` tag, plus the STAC item id, the scene cloud cover and the area's invalid
+  fraction (`AREA_INVALID_FRACTION`);
 - `<name>_scl.tif`, the scene classification layer.
 
 `super_resolve` picks up the offset and the SCL file automatically. Pass `api=` to use another STAC API that
@@ -1016,15 +1243,17 @@ done wrote OUTPUT.tif
 
 | Task | Command |
 |---|---|
-| Default (Pro, best available device) | `synapse-sr scene.tif scene_2m.tif` |
-| Fast model on a CPU | `synapse-sr scene.tif scene_2m.tif --model flash --device cpu` |
+| Default (Flash, best available device) | `synapse-sr scene.tif scene_2m.tif` |
+| Highest detail (GPU) | `synapse-sr scene.tif scene_2m.tif --model pro` |
 | Offline, local weights | `synapse-sr scene.tif scene_2m.tif --weights synapse-pro-v2.safetensors` |
 | Explicit cloud mask | `synapse-sr scene.tif scene_2m.tif --scl scene_SCL_20m.tif` |
 | No cloud masking | `synapse-sr scene.tif scene_2m.tif --scl none` |
 | Raw DN from baseline ≥ 04.00 without a tag | `synapse-sr scene.tif scene_2m.tif --offset -1000` |
 | Four bands only (for a GIS) | `synapse-sr scene.tif scene_2m.tif --no-confidence` |
 | Low GPU memory | `synapse-sr scene.tif scene_2m.tif --batch 2` |
-| Scripts and pipelines | `synapse-sr scene.tif scene_2m.tif --json` (one JSON line on stdout, no bars) |
+| Part of a large tile | `synapse-sr T43PGQ.tif part.tif --window 2000,3000,1000,1000` |
+| A whole folder, four bands, previews | `synapse-sr scenes/ out/ --no-confidence --preview previews/` |
+| Scripts and pipelines | `synapse-sr scene.tif scene_2m.tif --json` (JSON on stdout, no bars; per-file lines of folder runs go to stderr) |
 | Diagnose the machine | `synapse-sr --env` |
 | What models exist | `synapse-sr --models` |
 
@@ -1032,24 +1261,30 @@ done wrote OUTPUT.tif
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--model` | `pro` | `pro`, `flash`, or a registered name such as `pro-v1` |
+| `--model` | `flash` | `flash`, `pro`, or a registered name such as `pro-v1` |
 | `--weights` | | local `.safetensors` checkpoint; no network access needed |
-| `--device` | CUDA if available | `cuda`, `cuda:1`, `cpu`, `mps` |
+| `--device` | CUDA, then MPS (Flash), then CPU | `cuda`, `cuda:1`, `cpu`, `mps` |
+| `--backend`, `--backend-device` | | Flash accelerators, see [Hardware](hardware.md) |
+| `--window ROW,COL,H,W` | | process only this pixel window |
+| `--bounds L,B,R,T` | | process only this area, in the input CRS |
 | `--scl` | `auto` | scene classification raster; `auto` uses `<input>_scl.tif` when it exists; `none` disables |
 | `--offset` | tag or 0 | DN offset added before dividing by 10 000 |
-| `--tile` | 64 GPU scan / 32 PyTorch / 128 Flash | tile size in 10 m pixels |
+| `--tile` | largest that fits memory | tile size in 10 m pixels |
 | `--halo` | 16 | context around each tile, in 10 m pixels |
-| `--batch` | 8 CUDA / 1 CPU | tiles per forward pass |
-| `--no-confidence` | | write B04 B03 B02 B08 only |
+| `--batch` | as many as fit, up to 8, on CUDA / 1 CPU | tiles per forward pass |
+| `--no-confidence` | | write B04 B03 B02 B08 only (also in folder mode) |
+| `--preview PNG` | | save a 10 m / 2 m / support quicklook; a folder of `<name>.png` in folder mode |
+| `--cog` | | Cloud-Optimised GeoTIFF |
+| `--fetch LAT,LON`, `--dates START:END`, `--size-m`, `--rank` | | download a scene first, see [Data](data.md) |
 | `--json` | | machine-readable summary on stdout |
-| `--quiet` | | no progress bar or summary |
+| `--quiet` | | no progress bar, summary or per-file lines |
 | `--env`, `--models`, `--version` | | print and exit (`--env --json` for JSON) |
 
 ## Output file
 
 | Bands | Content |
 |---|---|
-| 1-4 | B04 B03 B02 B08 surface reflectance, float32, NaN where the input was invalid |
+| 1-4 | B04 B03 B02 B08 surface reflectance, float32, NaN (the declared NoData) where the input was invalid |
 | 5-8 | `ERRSCALE_*`: learned per-pixel error scale for each band |
 | 9 | `SUPPORT`: 2 observation-determined, 1 medium, 0 prior-dominated or invalid |
 
@@ -1057,8 +1292,9 @@ Same CRS and bounds as the input, with a 2 m pixel.
 
 ## Exit codes
 
-`0` success. Any error (unreadable file, unsupported grid, missing weights) exits non-zero with a message that
-says what to change; see [Troubleshooting](../troubleshooting.md).
+`0` success, `1` an error (unreadable file, unsupported grid, missing weights, a bad `--window` / `--fetch`
+argument, or any failed file in folder mode), `2` a usage error, `130` interrupted. Every error prints a message
+that says what to change; see [Troubleshooting](../troubleshooting.md).
 
 
 ---
@@ -1699,7 +1935,13 @@ synapse-sr --env
 | `rotated or sheared geotransforms are not supported` | non north-up raster | `gdalwarp` to a north-up grid |
 | `select one 'time' first` | multi-date xarray cube | pass `cube.isel(time=k)` |
 | `mamba-ssm selective_scan_cuda is installed but unusable` (warning) | kernel built for another PyTorch or CUDA | reinstall `mamba-ssm` with `--no-build-isolation`; results are unaffected, only slower |
-| `CUDA out of memory` | tile too large for the GPU | lower `tile` (for example `tile=32`) |
+| `CUDA out of memory` | tile too large for the GPU | lower `tile` (for example `tile=32`) or set `SYNAPSE_SR_MEMORY=2` |
+| `MemoryError: a H x W px scene needs about N GB for its 2 m output` | the whole scene does not fit | process parts with `window=` / `bounds=` (CLI `--window` / `--bounds`) of the size the message gives |
+| `onnx:cpu failed on a ... window; running it in PyTorch instead` (warning) | the accelerator rejected a window | the result is correct (same model); `metadata['detail_backend_fallbacks']` counts such windows; report it if it happens on every window |
+| `MPS could not run this model; using the CPU` (warning) | an operation is missing on Apple MPS | nothing to do; pass `device="mps"` to see the error |
+| `could not download ... after 4 attempts` | network or firewall | rerun to resume, set `HF_ENDPOINT` to a mirror, or pass `weights=` |
+| `before and after cover different areas` | `change()` on two scenes with different grids | clip both scenes to the same 10 m grid first |
+| QGIS shows a black frame around the scene | file from synapse-sr 0.4.2 or older, NoData not declared | set NoData to `nan` in the layer properties, or re-save with 0.4.3 |
 | `GeoTIFF IO needs rasterio` | rasterio missing | `pip install rasterio` (conda-forge on Windows if pip fails) |
 | output much darker or brighter than expected | offset mismatch | check the product's processing baseline; pass `offset=-1000` or `offset=0` |
 | scenes from `fetch_sentinel2` in v0.2.0 look too dark, NDVI near 1 everywhere | v0.2.0 applied the baseline 04.00 offset to Earth Search data that already had it removed | upgrade to 0.3.0, re-download the scene (the `BOA_ADD_OFFSET` tag is now correct) |
@@ -1723,6 +1965,21 @@ the `synapse-sr --env` output.
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
+
+## [0.4.2] - 2026-11-18
+
+### Added
+
+- Optional OpenVINO and ONNX Runtime backends for the Flash detail network (`enable_openvino`, `enable_onnxruntime`,
+  `enable_tensorrt`) with `--backend` / `--backend-device` on the CLI. The physics pipeline stays in PyTorch.
+- Hardware compatibility guide covering PyTorch CPU/CUDA/ROCm/MPS, OpenVINO, ONNX Runtime and TensorRT.
+- CUDA, ONNX Runtime CUDA and TensorRT validated on 2× NVIDIA T4; Pro runs natively on CUDA.
+- `synapse-sr --env` now reports OpenVINO and ONNX Runtime availability.
+
+### Fixed
+
+- The bad-band consistency warning now scales with the requested `discrepancy` (5 tau for Pro, 20 tau for Flash)
+  instead of always using Flash's 20 tau, and names the offending bands with their measured values.
 
 ## [0.4.1] - 2026-09-28
 

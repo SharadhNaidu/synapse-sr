@@ -4,6 +4,12 @@
 
 ::: synapse_sr.super_resolve
 
+::: synapse_sr.super_resolve_folder
+
+::: synapse_sr.load
+
+::: synapse_sr.clear_cache
+
 ::: synapse_sr.Pro
     options:
       members:
@@ -30,6 +36,7 @@
         - rgb
         - to_xarray
         - save
+        - load
 
 ## Applications
 
@@ -56,6 +63,10 @@ These are stable, but most users do not need them.
 | Variable | Effect |
 |---|---|
 | `SYNAPSE_CACHE` | weight cache directory (default `~/.cache/synapse`) |
+| `SYNAPSE_OFFLINE` / `HF_HUB_OFFLINE` | `1` never downloads; a missing checkpoint raises with the fix |
+| `HF_ENDPOINT` | Hugging Face mirror for the weight download, e.g. `https://hf-mirror.com` |
+| `SYNAPSE_SR_MEMORY` | working-memory budget for tiling in GB, on any device (default: free GPU memory, or half the available RAM up to 6 GB) |
+| `SYNAPSE_SR_PREFLIGHT` | `0` skips the up-front check that the scene's output fits in memory |
 | `SYNAPSE_SR_DISABLE_FUSED` | `1` ignores an installed `mamba-ssm` kernel |
 | `SYNAPSE_SR_DISABLE_TRITON` | `1` skips the Triton scan kernel on CUDA |
 | `SYNAPSE_SR_QUIET` | `1` silences progress bars and summaries everywhere |

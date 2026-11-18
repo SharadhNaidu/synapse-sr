@@ -29,7 +29,16 @@ model = Pro.from_pretrained(weights="/opt/models/synapse-pro-v2.safetensors")
 ## Cache
 
 Downloaded weights are stored in `~/.cache/synapse`, or in `$SYNAPSE_CACHE` if set. They are verified by
-SHA-256 on every load. A corrupted or tampered file raises an error that names the expected and actual hashes.
+SHA-256 on every load (the hash is remembered in a `.sha256` file next to the checkpoint and recomputed whenever
+the file changes). A corrupted or tampered file raises an error that names the expected and actual hashes.
+
+An interrupted download is retried up to four times and resumes where it stopped; the partial `.part` file is
+kept, so the next run continues it.
+
+| Situation | Setting |
+|---|---|
+| Hugging Face blocked, a mirror is reachable | `HF_ENDPOINT=https://hf-mirror.com` |
+| Never touch the network | `SYNAPSE_OFFLINE=1` (or `HF_HUB_OFFLINE=1`): a checkpoint that is not cached raises instead of downloading |
 
 ## Your own checkpoints
 
