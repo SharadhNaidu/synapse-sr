@@ -227,19 +227,51 @@ class Result:
         v = np.clip((img - lo) / max(hi - lo, 1e-9), 0, 1) ** (1.0 / gamma)
         return (np.nan_to_num(v).transpose(1, 2, 0) * 255).astype(np.uint8)
 
-    def to_xarray(self):
-        """``xarray.DataArray`` (band, y, x) with coordinates when the input was georeferenced.
+    def to_xarray(self, dataset: bool = False):
+        """``xarray.DataArray`` (band, y, x) of reflectance, with x / y coordinates, CRS and geotransform when the input
+        was georeferenced. With ``rioxarray`` installed they are written the rioxarray way (``.rio.crs``,
+        ``.rio.to_raster``); without it they are kept in ``attrs``.
+
+        ``dataset=True`` returns an ``xarray.Dataset`` with every layer: ``reflectance``, ``x_base``, ``prior``,
+        ``confidence``, ``uncertainty`` (when calibrated), ``support``, ``valid`` and ``context`` (on a ``context_band`` axis).
         Requires ``xarray``."""
         import xarray as xr
-        coords = {"band": list(BANDS)}
+        coords, attrs = {}, {"gsd_m": self.gsd, "model": self.metadata.get("model")}
+        h, w = self.image.shape[1:]
         if self.profile is not None:
             t = self.profile["transform"]
             s = self.metadata["scale"]
-            h, w = self.image.shape[1:]
             coords["x"] = t.c + (np.arange(w) + 0.5) * t.a / s
             coords["y"] = t.f + (np.arange(h) + 0.5) * t.e / s
-        attrs = {"gsd_m": self.gsd, "crs": str(self.profile["crs"]) if self.profile else None}
-        return xr.DataArray(self.image, dims=("band", "y", "x"), coords=coords, attrs=attrs, name="reflectance")
+            attrs["crs"] = str(self.profile["crs"]) if self.profile.get("crs") is not None else None
+            attrs["transform"] = list(geotiff.scaled_transform(t, s))[:6]
+        da = lambda v, names: xr.DataArray(v, dims=("band", "y", "x"), coords=dict(coords, band=list(names)))
+        if not dataset:
+            return self._georef(xr.DataArray(self.image, dims=("band", "y", "x"), coords=dict(coords, band=list(BANDS)),
+                                             attrs=attrs, name="reflectance"))
+        layers = {"reflectance": da(self.image, BANDS), "confidence": da(self.confidence, BANDS)}
+        for k in ("x_base", "prior"):
+            if getattr(self, k) is not None:
+                layers[k] = da(getattr(self, k), BANDS)
+        if (self.calibration or {}).get("error_model"):
+            layers["uncertainty"] = da(self.uncertainty(), BANDS)
+        if self.context is not None:
+            layers["context"] = xr.DataArray(self.context, dims=("context_band", "y", "x"),
+                                             coords=dict(coords, context_band=list(CONTEXT_BANDS)))
+        for k in ("support", "valid"):
+            if getattr(self, k) is not None:
+                layers[k] = xr.DataArray(getattr(self, k), dims=("y", "x"), coords=coords)
+        return self._georef(xr.Dataset(layers, attrs=attrs))
+
+    def _georef(self, obj):
+        if self.profile is None or self.profile.get("crs") is None:
+            return obj
+        try:
+            import rioxarray  # noqa: F401  registers the .rio accessor
+        except ImportError:
+            return obj
+        return obj.rio.write_crs(self.profile["crs"].to_wkt()).rio.write_transform(
+            geotiff.scaled_transform(self.profile["transform"], self.metadata["scale"]))
 
     def save(self, path, with_confidence: bool = True, cog: bool = False):
         """Write a float32 GeoTIFF (or ``.npz`` when the input was an array).
