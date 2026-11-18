@@ -74,6 +74,7 @@ def super_resolve_folder(src_dir, out_dir, model="flash", pattern="*.tif", overw
     ``backend`` / ``backend_device`` attach an optional accelerator, as in :func:`load`.
     """
     import pathlib
+    import sys
     src_dir, out_dir = pathlib.Path(src_dir), pathlib.Path(out_dir)
     files = sorted(f for f in src_dir.glob(pattern) if not f.stem.lower().endswith("_scl"))
     if not files:
@@ -92,5 +93,5 @@ def super_resolve_folder(src_dir, out_dir, model="flash", pattern="*.tif", overw
             report.append(dict(r.summary(print_=False), input=str(f), output=str(dst)))
         except Exception as e:                           # keep going: one bad file must not stop a batch
             report.append({"input": str(f), "error": f"{type(e).__name__}: {e}"})
-        print(f"synapse-sr: {i}/{len(files)} {f.name} -> {report[-1].get('error') or dst}", flush=True)
+        print(f"synapse-sr: {i}/{len(files)} {f.name} -> {report[-1].get('error') or dst}", file=sys.stderr, flush=True)
     return report
