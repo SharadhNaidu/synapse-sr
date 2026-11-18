@@ -1,8 +1,12 @@
 import hashlib
 import os
 import pathlib
-import tempfile
+import time
+import urllib.error
 import urllib.request
+
+HF = "https://huggingface.co"
+ATTEMPTS = 4
 
 
 def cache_dir():
@@ -17,27 +21,69 @@ def sha256(path):
     return h.hexdigest()
 
 
+def resolve(url):
+    """Point Hugging Face URLs at ``$HF_ENDPOINT`` (a mirror such as https://hf-mirror.com) when it is set."""
+    mirror = os.environ.get("HF_ENDPOINT", "").rstrip("/")
+    return mirror + url[len(HF):] if mirror and url.startswith(HF + "/") else url
+
+
+def offline():
+    return any(os.environ.get(k, "0") not in ("", "0") for k in ("SYNAPSE_OFFLINE", "HF_HUB_OFFLINE"))
+
+
+def _get(url, part, filename):
+    """Append to ``part`` from where a previous attempt stopped; the server may ignore the range and restart."""
+    from synapse_sr import ui
+    have = part.stat().st_size if part.exists() else 0
+    req = urllib.request.Request(url, headers={"Range": f"bytes={have}-"} if have else {})
+    try:
+        r = urllib.request.urlopen(req, timeout=60)
+    except urllib.error.HTTPError as e:
+        if e.code == 416 and have:                        # range past the end: the part file is already complete
+            return
+        raise
+    with r:
+        if have and r.status != 206:
+            have = 0
+        size = int(r.headers.get("Content-Length") or 0)
+        bar = ui.DownloadBar(filename, (have + size) or None)
+        bar.update(have)
+        got = 0
+        try:
+            with open(part, "ab" if have else "wb") as f:
+                for chunk in iter(lambda: r.read(1 << 20), b""):
+                    f.write(chunk)
+                    got += len(chunk)
+                    bar.update(len(chunk))
+        finally:
+            bar.close()
+    if size and got < size:                               # the connection dropped without an error
+        raise ConnectionResetError(f"download stopped after {have + got} of {have + size} bytes")
+
+
 def fetch(url, expected_sha256, filename):
-    """Download once into the cache and verify SHA-256 on every load."""
+    """Download once into the cache (resuming and retrying on network errors) and verify SHA-256."""
     dst = cache_dir() / filename
     if not dst.exists():
+        if offline():
+            raise FileNotFoundError(f"{dst} is not cached and offline mode is on (SYNAPSE_OFFLINE / HF_HUB_OFFLINE); "
+                                    "download it once with network access or pass weights='path/to/model.safetensors'")
         dst.parent.mkdir(parents=True, exist_ok=True)
-        from synapse_sr import ui
-        with tempfile.NamedTemporaryFile(delete=False, dir=dst.parent) as tmp:
+        part = dst.with_name(dst.name + ".part")
+        src = resolve(url)
+        for attempt in range(1, ATTEMPTS + 1):
             try:
-                with urllib.request.urlopen(url, timeout=60) as r:
-                    bar = ui.DownloadBar(filename, int(r.headers.get("Content-Length") or 0) or None)
-                    try:
-                        for chunk in iter(lambda: r.read(1 << 20), b""):
-                            tmp.write(chunk)
-                            bar.update(len(chunk))
-                    finally:
-                        bar.close()
-            except BaseException:
-                tmp.close()
-                os.unlink(tmp.name)
-                raise
-        os.replace(tmp.name, dst)
+                _get(src, part, filename)
+                break
+            except (urllib.error.URLError, OSError, TimeoutError) as e:
+                if isinstance(e, urllib.error.HTTPError) and e.code in (401, 403, 404):
+                    raise
+                if attempt == ATTEMPTS:
+                    raise ConnectionError(f"could not download {src} after {ATTEMPTS} attempts ({e}); the partial file "
+                                          f"{part} is kept and the next run resumes it. Behind a firewall, set "
+                                          "HF_ENDPOINT to a mirror or pass weights=") from e
+                time.sleep(2 ** attempt)
+        os.replace(part, dst)
     got = sha256(dst)
     if got != expected_sha256:
         raise RuntimeError(f"checksum mismatch for {dst}: expected {expected_sha256}, got {got}; "
