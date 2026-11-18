@@ -7,7 +7,7 @@ name = "synapse-sr"
 dynamic = ["version"]
 description = "Observation-consistent super-resolution of Sentinel-2 imagery to a 2 m grid"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 license = {text = "CC0-1.0"}
 authors = [{name = "Sharadh Naidu", email = "sharadhanaidu@rvu.edu.in"}]
 keywords = ["synapse-sr", "synapse", "sentinel-2", "sentinel2", "image-super-resolution", "super-resolution", "satellite-imagery", "remote-sensing", "earth-observation", "deep-learning",
@@ -18,11 +18,12 @@ classifiers = [
   "License :: CC0 1.0 Universal (CC0 1.0) Public Domain Dedication",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.8",
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Topic :: Scientific/Engineering :: GIS",
   "Topic :: Scientific/Engineering :: Image Processing",
   "Typing :: Typed",

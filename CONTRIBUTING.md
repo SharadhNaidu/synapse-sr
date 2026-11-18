@@ -45,7 +45,7 @@ runs without downloading the trained checkpoint.
 
 - Clear names and small functions; comments only where the code cannot say it.
 - Public functions and classes carry numpy-style docstrings. The API reference is generated from them.
-- The code must stay compatible with Python 3.8 and PyTorch 1.13.
+- The code must stay compatible with Python 3.9 and PyTorch 1.13.
 
 ## Releases
 

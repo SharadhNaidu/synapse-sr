@@ -8,7 +8,7 @@ description: Install SYNAPSE-SR (synapse-sr) with pip on Windows, macOS, Linux, 
 
 | | |
 |---|---|
-| Python | 3.8 or newer |
+| Python | 3.9 or newer |
 | PyTorch | 1.13 or newer (CPU or CUDA build) |
 | Other | `numpy`, `scipy`, `safetensors`, `rasterio`, `affine`, `rich`, installed automatically |
 
