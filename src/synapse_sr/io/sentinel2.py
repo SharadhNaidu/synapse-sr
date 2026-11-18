@@ -29,9 +29,20 @@ def select_bands(arr, names=None):
     return arr[[order.index(b) for b in INPUT_BANDS]]
 
 
+def is_reflectance(arr):
+    """True for float input already in reflectance. Integer input is always DN. Decided on the 99.9th percentile of
+    the finite non-zero values, so a few hot or saturated pixels above 2 do not flip a reflectance scene to DN."""
+    if not np.issubdtype(np.asarray(arr).dtype, np.floating):
+        return False
+    v = np.asarray(arr, np.float32)
+    v = v[np.isfinite(v) & (v != 0)]
+    return v.size == 0 or float(np.percentile(v, 99.9)) <= 2.0
+
+
 def to_reflectance(arr, scale=10000.0, offset=0.0):
-    """DN -> reflectance: (DN + offset) / scale. L2A processing baseline >= 04.00 uses offset -1000."""
-    arr = arr.astype(np.float32)
-    if arr.size and np.nanmax(arr) <= 2.0:   # already reflectance
-        return arr
-    return (arr + offset) / scale
+    """DN -> reflectance: (DN + offset) / scale. L2A processing baseline >= 04.00 uses offset -1000. Float input that
+    is already reflectance (see :func:`is_reflectance`) is returned unchanged."""
+    out = arr.astype(np.float32)
+    if out.size and is_reflectance(arr):
+        return out
+    return (out + offset) / scale
