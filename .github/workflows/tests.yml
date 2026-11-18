@@ -12,7 +12,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        python: ["3.10", "3.11", "3.12"]
+        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
         include:
           # ubuntu-latest (26.04) has no python 3.9 build, so 3.9 runs on 24.04
           - os: ubuntu-24.04
@@ -86,3 +86,5 @@ jobs:
           python -c "import numpy as np, rasterio; from affine import Affine; from synapse_sr.io.sentinel2 import S2_12; arr = (np.random.default_rng(1).random((12, 48, 48)) * 3000 + 300).astype(np.uint16); p = dict(driver='GTiff', count=12, height=48, width=48, dtype='uint16', crs='EPSG:32643', transform=Affine(10, 0, 500000, 0, -10, 4200000)); d = rasterio.open('in.tif', 'w', **p); d.write(arr); [d.set_band_description(i + 1, b) for i, b in enumerate(S2_12)]; d.close()"
           synapse-sr in.tif out.tif --json --preview preview.png --cog
           python -c "import rasterio; d = rasterio.open('out.tif'); assert d.count == 9 and d.res == (2.0, 2.0); print('cli ok')"
+          synapse-sr in.tif part.tif --window 8,8,24,24 --quiet
+          python -c "import math, rasterio, synapse_sr; d = rasterio.open('part.tif'); assert (d.height, d.width) == (120, 120) and math.isnan(d.nodata); r = synapse_sr.Result.load('part.tif'); assert r.image.shape == (4, 120, 120); print('window + load ok')"
