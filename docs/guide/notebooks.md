@@ -3,7 +3,7 @@
 The quick-start notebook runs unchanged on both platforms:
 
 [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/SharadhNaidu/synapse-sr/blob/main/notebooks/quickstart.ipynb)
-[![Open in Kaggle](https://kaggle.com/static/images/open-in-kaggle.svg)](https://kaggle.com/kernels/welcome?src=https://github.com/SharadhNaidu/synapse-sr/blob/main/notebooks/quickstart.ipynb)
+[![Open in Kaggle](https://kaggle.com/static/images/open-in-kaggle.svg)](https://www.kaggle.com/code/priyangshumukherjee/synapse-sr-quick-start)
 
 It downloads a real Sentinel-2 scene, super-resolves it, and walks through crop monitoring, urban analysis and
 flood / landslide change detection.
@@ -31,7 +31,8 @@ flood / landslide change detection.
 
 ## Kaggle
 
-1. Open the notebook with the badge above, or *Create → New notebook → File → Import notebook* and paste the
+1. Open the ready-to-run notebook with the badge above: [synapse-sr-quick-start](https://www.kaggle.com/code/priyangshumukherjee/synapse-sr-quick-start).
+   Alternatively, *Create → New notebook → File → Import notebook* and paste the
    GitHub URL of `notebooks/quickstart.ipynb`.
 2. In the right-hand panel: *Session options → Accelerator → GPU T4 x2 or P100*, and *Internet → On*. Internet
    access is needed for the one-time weight download and for `fetch_sentinel2`.

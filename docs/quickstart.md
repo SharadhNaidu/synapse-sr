@@ -6,7 +6,7 @@ description: Super-resolve a Sentinel-2 scene from 10 m to 2 m resolution in thr
 
 !!! tip "No installation needed to try it"
     [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/SharadhNaidu/synapse-sr/blob/main/notebooks/quickstart.ipynb)
-    [![Open in Kaggle](https://kaggle.com/static/images/open-in-kaggle.svg)](https://kaggle.com/kernels/welcome?src=https://github.com/SharadhNaidu/synapse-sr/blob/main/notebooks/quickstart.ipynb)
+    [![Open in Kaggle](https://kaggle.com/static/images/open-in-kaggle.svg)](https://www.kaggle.com/code/priyangshumukherjee/synapse-sr-quick-start)
     runs the whole tour below on a free GPU. See [Colab and Kaggle](guide/notebooks.md).
 
 ## 1. Install
